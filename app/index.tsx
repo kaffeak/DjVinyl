@@ -22,13 +22,9 @@ export default function Index() {
     const [currentAlbum, setCurrentAlbum] = useState("");
     const [currentArtist, setCurrentArtist] = useState("");
     const [currentURL, setCurrentURL] = useState("https://thumbs.dreamstime.com/z/colorful-abstract-welcome-design-posters-banners-perfect-featuring-vibrant-patterns-playful-shapes-to-create-cheerful-341184955.jpg");
-    const [currentAlbumId, setCurrentAlbumId] = useState<string | null>(null);
 
     const fetchAlbumCover = async (album: string, artist: string) => {
         try {
-            console.log(currentAlbumId);
-            let thisAlbumId;
-            if (currentAlbumId === null) {
             const query = `release/?query=release:${encodeURIComponent(album)} AND artist:${encodeURIComponent(artist)}&fmt=json`;
             const mbUrl = `https://musicbrainz.org/ws/2/${query}`;
             const response = await fetch(mbUrl, {
@@ -43,12 +39,8 @@ export default function Index() {
                 return null;
             }
             console.log("Title: " + currentAlbum + ", Artist: " + currentArtist);
-            thisAlbumId = data.releases[0].id;
-            }else {
-                thisAlbumId = currentAlbumId;
-                setCurrentAlbumId(null);
-            }
-            const coverResponse = await fetch(`https://coverartarchive.org/release/${thisAlbumId}`);
+
+            const coverResponse = await fetch(`https://coverartarchive.org/release/${data.releases[0].id}`);
             const coverData = await coverResponse.json();
 
             if (!coverData.images[0].image) {
@@ -72,7 +64,7 @@ export default function Index() {
 
     useEffect(() => {
         if (currentAlbum) {
-            fetchAlbumCover(currentAlbum, currentURL);
+            fetchAlbumCover(currentAlbum, currentArtist);
         }
     }, [currentAlbum]);
 
@@ -118,7 +110,6 @@ export default function Index() {
             let randNumber = Math.floor(Math.random() * response.documents.length);
             setCurrentAlbum(response.documents[randNumber].title);
             setCurrentArtist(response.documents[randNumber].artist);
-            setCurrentAlbumId(response.documents[randNumber].albumId ? response.documents[randNumber].albumId : null);
         }, function (error) {
             console.log(error);
         });

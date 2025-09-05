@@ -13,15 +13,31 @@ export const db = new Databases(client);
 //database id: 68ada3e1001da2d5fb66
 //collection id: 68ada605003cab076573
 
+const shuffleArray = <T,>(array: T[]): T[] => {
+    const copy = [...array];
+    for (let i = copy.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [copy[i], copy[j]] = [copy[j], copy[i]];
+    }
+    return copy;
+};
+
 export default function Index() {
     const [albumMenu, setalbumMenu] = useState(false);
     const [title, setTitle] = useState("");
     const [artist, setArtist] = useState("");
     const [sides, setSides] = useState<number | null>(null);
     const [genre, setGenre] = useState("");
-    const [currentAlbum, setCurrentAlbum] = useState("");
-    const [currentArtist, setCurrentArtist] = useState("");
-    const [currentURL, setCurrentURL] = useState("https://thumbs.dreamstime.com/z/colorful-abstract-welcome-design-posters-banners-perfect-featuring-vibrant-patterns-playful-shapes-to-create-cheerful-341184955.jpg");
+
+    const [albums, setAlbums] = useState<any[]>([]);
+    const [shuffledAlbums, setShuffledAlbums] = useState<any[]>([]);
+    const [albumIndex, setAlbumIndex] = useState(0);
+
+    const [currentAlbum, setCurrentAlbum] = useState<{
+        title: string;
+        artist: string;
+        coverUrl: string;
+    } | null>(null);
 
     const fetchAlbumCover = async (album: string, artist: string) => {
         try {
@@ -34,39 +50,63 @@ export default function Index() {
             });
             const data = await response.json();
 
-            if (!data.releases || data.releases.length === 0) {
+            if (!data.releases?.length) {
                 console.log("No release found");
-                return null;
+                setCurrentAlbum({ title, artist, coverUrl: "" });
+                return;
             }
-            console.log("Title: " + currentAlbum + ", Artist: " + currentArtist);
+            console.log("Title: " + currentAlbum?.title + ", Artist: " + currentAlbum?.artist);
 
-            const coverResponse = await fetch(`https://coverartarchive.org/release/${data.releases[0].id}`);
+            const releaseId = data.releases[0].id;
+            const coverResponse = await fetch(`https://coverartarchive.org/release/${releaseId}`, {});
             const coverData = await coverResponse.json();
 
-            if (!coverData.images[0].image) {
+            if (!coverData.images?.length) {
                 console.log("No cover art found");
-                return null;
+                setCurrentAlbum({ title, artist, coverUrl: "" });
+                return;
             }
             //implement dubble image if there is a back
-            if (!coverData.images[0].thumbnails.small) {
-                setCurrentURL(coverData.images[0].image);
-                return null;
-            }
-            setCurrentURL(coverData.images[0].thumbnails.small);
+            const imageUrl =
+                coverData.images[0].thumbnails?.["250"];
+                coverData.images[0].thumbnails?.small ||
+                coverData.images[0].thumbnails?.large ||
+                coverData.images[0].image;
+
+            setCurrentAlbum({title: album, artist, coverUrl: imageUrl});
 
         } catch (err) {
             console.error("Error fetching album cover:", err);
+            setCurrentAlbum({ title, artist, coverUrl: "" });
         }
     }
 
-    const tempURL = " https://upload.wikimedia.org/wikipedia/en/8/8d/Starset_-_Horizons.png";
-
+    //fetch once on mount
+    useEffect(() => {
+        db.listDocuments("68ada3e1001da2d5fb66", "68ada605003cab076573")
+            .then((response) => {
+                setAlbums(response.documents);
+                setShuffledAlbums(shuffleArray(response.documents));
+                setAlbumIndex(0);
+            })
+            .catch((error) => console.error(error));
+    }, []);
 
     useEffect(() => {
-        if (currentAlbum) {
-            fetchAlbumCover(currentAlbum, currentArtist);
+        if (shuffledAlbums.length > 0 && albumIndex < shuffledAlbums.length) {
+            const album = shuffledAlbums[albumIndex];
+            fetchAlbumCover(album.title, album.artist);
         }
-    }, [currentAlbum]);
+    }, [albumIndex, shuffledAlbums]);
+
+    const shuffleAlbums = () => {
+        if (albumIndex + 1 < shuffledAlbums.length) {
+            setAlbumIndex(albumIndex + 1);
+        } else {
+            setShuffledAlbums(shuffleArray(albums));
+            setAlbumIndex(0);
+        }
+    }
 
     const sendToDb = () => {
         const promise = db.createDocument(
@@ -98,23 +138,6 @@ export default function Index() {
         setSides(isNaN(parsed) ? null : parsed);
     }
 
-    const shuffleAlbums = () => {
-        let promise = db.listDocuments(
-            '68ada3e1001da2d5fb66',
-            '68ada605003cab076573'
-        )
-
-
-        promise.then(function (response) {
-            console.log(response);
-            let randNumber = Math.floor(Math.random() * response.documents.length);
-            setCurrentAlbum(response.documents[randNumber].title);
-            setCurrentArtist(response.documents[randNumber].artist);
-        }, function (error) {
-            console.log(error);
-        });
-    }
-
   return (
     <View className="flex-1 relative bg-white">
         {!albumMenu && (
@@ -130,23 +153,14 @@ export default function Index() {
                     </Pressable>
                 </View>
                 <View className="items-center mt-5">
-                    <View className="flex-1 items-center justify-center bg-white">
-                        {currentURL !== "" ? (
-                            <Image
-                                source={{ uri: currentURL, width: 250, height: 250}}
-
-                            />
-                        ) : (
-                            <Text>Loading image...</Text>
-                        )}
-                    </View>
+                    <Image
+                        source={{ uri: currentAlbum?.coverUrl ? currentAlbum.coverUrl : "https://via.placeholder.com/300?text=No+Cover", width: 250, height: 250}}
+                        style={{resizeMode: "contain"}}
+                    />
+                    <Text className="mt-2 font-semibold">
+                        {currentAlbum ? `${currentAlbum.title} — ${currentAlbum.artist}` : "No album selected"}
+                    </Text>
                     <ShuffleButton callParentFunction={shuffleAlbums} />
-                    <Pressable
-                        onPress={() => {fetchAlbumCover("Horizon inn", "Fricky")}}
-                        className="bg-green-500 px-4 py-2 rounded-lg mt-20"
-                    >
-                        <Text>Test API</Text>
-                    </Pressable>
                 </View>
             </View>
         )}

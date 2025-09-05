@@ -2,7 +2,6 @@ import {Pressable, Text, TextInput, View, Image} from "react-native";
 import {Databases, Client, ID, Query} from "appwrite";
 import {useState, useEffect} from "react";
 import ShuffleButton from "@/app/shuffleButton";
-import {sleep} from "@/services/utils";
 
 const client = new Client()
     .setProject(process.env.EXPO_PUBLIC_APPWRITE_PROJECT_ID ?? "")
@@ -23,15 +22,57 @@ export default function Index() {
     const [currentAlbum, setCurrentAlbum] = useState("");
     const [currentArtist, setCurrentArtist] = useState("");
     const [currentURL, setCurrentURL] = useState("https://thumbs.dreamstime.com/z/colorful-abstract-welcome-design-posters-banners-perfect-featuring-vibrant-patterns-playful-shapes-to-create-cheerful-341184955.jpg");
-    const [delay, setDelay] = useState(0);
+    const [currentAlbumId, setCurrentAlbumId] = useState<string | null>(null);
 
-    var firstShuffle = true;
+    const fetchAlbumCover = async (album: string, artist: string) => {
+        try {
+            console.log(currentAlbumId);
+            let thisAlbumId;
+            if (currentAlbumId === null) {
+            const query = `release/?query=release:${encodeURIComponent(album)} AND artist:${encodeURIComponent(artist)}&fmt=json`;
+            const mbUrl = `https://musicbrainz.org/ws/2/${query}`;
+            const response = await fetch(mbUrl, {
+                headers: {
+                    "User-Agent": "DjVinyl/1.0.0 (kaffe.ak46@gmail.com)"
+                }
+            });
+            const data = await response.json();
+
+            if (!data.releases || data.releases.length === 0) {
+                console.log("No release found");
+                return null;
+            }
+            console.log("Title: " + currentAlbum + ", Artist: " + currentArtist);
+            thisAlbumId = data.releases[0].id;
+            }else {
+                thisAlbumId = currentAlbumId;
+                setCurrentAlbumId(null);
+            }
+            const coverResponse = await fetch(`https://coverartarchive.org/release/${thisAlbumId}`);
+            const coverData = await coverResponse.json();
+
+            if (!coverData.images[0].image) {
+                console.log("No cover art found");
+                return null;
+            }
+            //implement dubble image if there is a back
+            if (!coverData.images[0].thumbnails.small) {
+                setCurrentURL(coverData.images[0].image);
+                return null;
+            }
+            setCurrentURL(coverData.images[0].thumbnails.small);
+
+        } catch (err) {
+            console.error("Error fetching album cover:", err);
+        }
+    }
 
     const tempURL = " https://upload.wikimedia.org/wikipedia/en/8/8d/Starset_-_Horizons.png";
 
+
     useEffect(() => {
         if (currentAlbum) {
-            setAlbumImage()
+            fetchAlbumCover(currentAlbum, currentURL);
         }
     }, [currentAlbum]);
 
@@ -68,11 +109,7 @@ export default function Index() {
     const shuffleAlbums = () => {
         let promise = db.listDocuments(
             '68ada3e1001da2d5fb66',
-            '68ada605003cab076573',
-            [
-                Query.select("title"),
-                Query.select("artist")
-            ]
+            '68ada605003cab076573'
         )
 
 
@@ -81,28 +118,10 @@ export default function Index() {
             let randNumber = Math.floor(Math.random() * response.documents.length);
             setCurrentAlbum(response.documents[randNumber].title);
             setCurrentArtist(response.documents[randNumber].artist);
+            setCurrentAlbumId(response.documents[randNumber].albumId ? response.documents[randNumber].albumId : null);
         }, function (error) {
             console.log(error);
         });
-    }
-
-    const setAlbumImage = async () => {
-        await sleep(delay);
-        const url = `https://www.googleapis.com/customsearch/v1?key=${process.env.EXPO_PUBLIC_GOOGLE_API_KEY}&cx=${process.env.EXPO_PUBLIC_GOOGLE_SEARCH_ENGINE_ID}&q=${encodeURIComponent(currentAlbum + " album cover")}&searchType=image`;
-
-        const response = await fetch(url);
-        const data = await response.json();
-
-        if(data.searchInformation.totalResults > 0) {
-            const imageUrl = data.items[0].link
-            setCurrentURL(imageUrl)
-            if(delay > 0)
-                setDelay(delay-5);
-        console.log("Fetched Image URL: ", currentURL);
-        }else {
-            setDelay(delay+10);
-            setAlbumImage();
-        }
     }
 
   return (
@@ -123,14 +142,20 @@ export default function Index() {
                     <View className="flex-1 items-center justify-center bg-white">
                         {currentURL !== "" ? (
                             <Image
-                                source={{ uri: currentURL }}
-                                className="w-3/4 aspect-square"
+                                source={{ uri: currentURL, width: 250, height: 250}}
+
                             />
                         ) : (
                             <Text>Loading image...</Text>
                         )}
                     </View>
                     <ShuffleButton callParentFunction={shuffleAlbums} />
+                    <Pressable
+                        onPress={() => {fetchAlbumCover("Horizon inn", "Fricky")}}
+                        className="bg-green-500 px-4 py-2 rounded-lg mt-20"
+                    >
+                        <Text>Test API</Text>
+                    </Pressable>
                 </View>
             </View>
         )}

@@ -1,4 +1,5 @@
-import {Pressable, Text, TextInput, View, Image} from "react-native";
+import {Pressable, Text, TextInput, View, Image, Modal} from "react-native";
+import { LinearGradient } from "expo-linear-gradient";
 import {Databases, Client, ID, Query} from "appwrite";
 import {useState, useEffect} from "react";
 import ShuffleButton from "@/app/shuffleButton";
@@ -23,7 +24,7 @@ const shuffleArray = <T,>(array: T[]): T[] => {
 };
 
 export default function Index() {
-    const [albumMenu, setalbumMenu] = useState(false);
+    const [albumMenu, setAlbumMenu] = useState(false);
     const [title, setTitle] = useState("");
     const [artist, setArtist] = useState("");
     const [sides, setSides] = useState<number | null>(null);
@@ -48,22 +49,32 @@ export default function Index() {
                     "User-Agent": "DjVinyl/1.0.0 (kaffe.ak46@gmail.com)"
                 }
             });
+
+            if (!response.ok) {
+                throw new Error(`MusicBrainz request failed: ${response.status}`);
+            }
+
             const data = await response.json();
 
             if (!data.releases?.length) {
                 console.log("No release found");
-                setCurrentAlbum({ title, artist, coverUrl: "" });
+                setCurrentAlbum({ title: album, artist, coverUrl: "" });
                 return;
             }
             console.log("Title: " + currentAlbum?.title + ", Artist: " + currentAlbum?.artist);
 
             const releaseId = data.releases[0].id;
             const coverResponse = await fetch(`https://coverartarchive.org/release/${releaseId}`, {});
+
+            if (!coverResponse.ok) {
+                throw new Error(`CoverArt request failed: ${coverResponse.status}`);
+            }
+
             const coverData = await coverResponse.json();
 
             if (!coverData.images?.length) {
                 console.log("No cover art found");
-                setCurrentAlbum({ title, artist, coverUrl: "" });
+                setCurrentAlbum({ title: album, artist, coverUrl: "" });
                 return;
             }
             //implement dubble image if there is a back
@@ -77,7 +88,7 @@ export default function Index() {
 
         } catch (err) {
             console.error("Error fetching album cover:", err);
-            setCurrentAlbum({ title, artist, coverUrl: "" });
+            setCurrentAlbum({ title: album, artist, coverUrl: "" });
         }
     }
 
@@ -95,7 +106,11 @@ export default function Index() {
     useEffect(() => {
         if (shuffledAlbums.length > 0 && albumIndex < shuffledAlbums.length) {
             const album = shuffledAlbums[albumIndex];
-            fetchAlbumCover(album.title, album.artist);
+            if (album?.title && album?.artist) {
+                fetchAlbumCover(album.title, album.artist);
+            } else {
+                console.warn("Invalid album data at index", albumIndex);
+            }
         }
     }, [albumIndex, shuffledAlbums]);
 
@@ -103,7 +118,8 @@ export default function Index() {
         if (albumIndex + 1 < shuffledAlbums.length) {
             setAlbumIndex(albumIndex + 1);
         } else {
-            setShuffledAlbums(shuffleArray(albums));
+            const newShuffle = shuffleArray(albums);
+            setShuffledAlbums(newShuffle);
             setAlbumIndex(0);
         }
     }
@@ -128,10 +144,15 @@ export default function Index() {
         });
     }
 
+
     const addAlbum = () => {
         sendToDb();
-        setalbumMenu(false);
-    }
+        console.log("Adding album:", {title, artist, sides, genre});
+        setTitle("");
+        setArtist("");
+        setSides(null);
+        setGenre("");
+    };
 
     const handleSetSides = (input: string) => {
         const parsed = parseInt(input, 10);
@@ -139,80 +160,103 @@ export default function Index() {
     }
 
   return (
-    <View className="flex-1 relative bg-white">
-        {!albumMenu && (
-            <View>
-                <View className="items-end mr-5 mt-10">
-                    <Pressable
-                        className="border-black border-2 rounded-md bg-black/20"
-                        onPress={() => {setalbumMenu(true);}}
-                    >
-                        <Text className="font-semibold text-xl m-1">
-                            Add Album!
-                        </Text>
-                    </Pressable>
-                </View>
-                <View className="items-center mt-5">
-                    <Image
-                        source={{ uri: currentAlbum?.coverUrl ? currentAlbum.coverUrl : "https://via.placeholder.com/300?text=No+Cover", width: 250, height: 250}}
-                        style={{resizeMode: "contain"}}
+  <LinearGradient
+          colors={["#1e293b", "#0f172a"]} // slate/dark blue
+          start={[0, 0]}
+          end={[0, 1]}
+          style={{ flex: 1 }}
+      >
+    <View className="flex-1 ">
+        <View className="flex-1 items-center justify-center">
+            <Image
+                source={{ uri: currentAlbum?.coverUrl ? currentAlbum.coverUrl : "https://placehold.co/250x250?text=No+Cover", width: 250, height: 250}}
+                style={{resizeMode: "contain", borderRadius: 16}}
+
+            />
+            <Text className="mt-4 font-bold text-lg text-gray-200 text-center">
+                {currentAlbum ? `${currentAlbum.title} — ${currentAlbum.artist}` : "No album selected"}
+            </Text>
+            <View className="mt-6">
+                <ShuffleButton callParentFunction={shuffleAlbums} />
+            </View>
+        </View>
+
+        <View className="items-center mb-16">
+            <Pressable
+                onPress={() => setAlbumMenu(true)}
+                style={{
+                    borderRadius: 999, // pill shape
+                    overflow: 'hidden', // needed for gradient corners
+                    elevation: 5, // shadow for Android
+                }}
+            >
+                <LinearGradient
+                    colors={['#8B5CF6', '#EC4899']} // purple to pink
+                    start={[0, 0]}
+                    end={[1, 0]}
+                    style={{
+                        paddingVertical: 14,
+                        paddingHorizontal: 30,
+                        alignItems: 'center',
+                        borderRadius: 999,
+                    }}
+                >
+                    <Text style={{ color: 'white', fontWeight: '700', fontSize: 18 }}>
+                        ＋ Add Album
+                    </Text>
+                </LinearGradient>
+            </Pressable>
+        </View>
+
+        <Modal visible={albumMenu} transparent animationType="slide">
+            <View className="flex-1 justify-center items-center bg-black/50">
+                <View className="bg-white rounded-2xl p-6 w-80 shadow-lg">
+                    <Text className="text-2xl font-bold mb-6 text-center text-gray-800">Add New Album</Text>
+
+                    <TextInput
+                        value={title}
+                        onChangeText={setTitle}
+                        placeholder="Title"
+                        className="border border-gray-300 rounded-lg p-3 mb-3"
                     />
-                    <Text className="mt-2 font-semibold">
-                        {currentAlbum ? `${currentAlbum.title} — ${currentAlbum.artist}` : "No album selected"}
-                    </Text>
-                    <ShuffleButton callParentFunction={shuffleAlbums} />
+                    <TextInput
+                        value={artist}
+                        onChangeText={setArtist}
+                        placeholder="Artist"
+                        className="border border-gray-300 rounded-lg p-3 mb-3"
+                    />
+                    <TextInput
+                        value={sides !== null ? sides.toString() : ""}
+                        onChangeText={handleSetSides}
+                        placeholder="Number of Sides"
+                        keyboardType="numeric"
+                        className="border border-gray-300 rounded-lg p-3 mb-3"
+                    />
+                    <TextInput
+                        value={genre}
+                        onChangeText={setGenre}
+                        placeholder="Genre"
+                        className="border border-gray-300 rounded-lg p-3 mb-6"
+                    />
+
+                    <View className="flex-row justify-between">
+                        <Pressable
+                            onPress={() => setAlbumMenu(false)}
+                            className="bg-gray-300 px-4 py-2 rounded-lg"
+                        >
+                            <Text className="text-gray-800 font-semibold">Cancel</Text>
+                        </Pressable>
+                        <Pressable
+                            onPress={addAlbum}
+                            className="bg-blue-500 px-4 py-2 rounded-lg"
+                        >
+                            <Text className="text-white font-semibold">Add</Text>
+                        </Pressable>
+                    </View>
                 </View>
             </View>
-        )}
-        {albumMenu && (
-            <View className="flex-1 items-center justify-center px-6">
-                <Text className="text-3xl font-bold m-1">Title</Text>
-                <TextInput
-                    className="border-2 border-black rounded-2xl bg-black/20 m-1"
-                    value={title}
-                    onChangeText={setTitle}
-                    placeholder="Enter title"
-                />
-                <Text className="text-3xl font-bold m-1">Artist</Text>
-                <TextInput
-                    className="border-2 border-black rounded-2xl bg-black/20 m-1"
-                    value={artist}
-                    onChangeText={setArtist}
-                    placeholder="Enter artist"
-                />
-                <Text className="text-3xl font-bold m-1">Number of Sides</Text>
-                <TextInput
-                    className="border-2 border-black rounded-2xl bg-black/20 m-1"
-                    value={sides !== null ? sides.toString() : ""}
-                    keyboardType={"numeric"}
-                    onChangeText={handleSetSides}
-                    placeholder="Enter number"
-                />
-                <Text className="text-3xl font-bold m-1">Genre</Text>
-                <TextInput
-                    className="border-2 border-black rounded-2xl bg-black/20 m-1"
-                    value={genre}
-                    onChangeText={setGenre}
-                    placeholder="Enter genre"
-                />
-                <Pressable
-                    className="border-black border-2 rounded-md mt-5 bg-black/20 m-1"
-                    onPress={() => {addAlbum()}}
-                >
-                    <Text className="font-semibold text-xl m-1">
-                        Add
-                    </Text>
-                </Pressable>
-                <Pressable
-                    className="border-black border-2 rounded-md mt-5 bg-black/20"
-                    onPress={() => {setalbumMenu(false)}}
-                >
-                    <Text className="font-semibold text-xl m-1">
-                        Return
-                    </Text>
-                </Pressable>
-            </View>
-        )}
+        </Modal>
     </View>
-  );
+  </LinearGradient>
+  )
 }

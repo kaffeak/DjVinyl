@@ -41,6 +41,10 @@ export default function Index() {
     } | null>(null);
 
     const fetchAlbumCover = async (album: string, artist: string) => {
+        if (shuffledAlbums[albumIndex].url !== null) {
+            setCurrentAlbum({title: album, artist, coverUrl: shuffledAlbums[albumIndex].url});
+            return;
+        }
         try {
             const query = `release/?query=release:${encodeURIComponent(album)} AND artist:${encodeURIComponent(artist)}&fmt=json`;
             const mbUrl = `https://musicbrainz.org/ws/2/${query}`;
@@ -79,9 +83,8 @@ export default function Index() {
             }
             //implement dubble image if there is a back
             const imageUrl =
-                coverData.images[0].thumbnails?.["250"];
-                coverData.images[0].thumbnails?.small ||
-                coverData.images[0].thumbnails?.large ||
+                coverData.images[0].thumbnails?.["1200"] ||
+                coverData.images[0].thumbnails?.["500"] ||
                 coverData.images[0].image;
 
             setCurrentAlbum({title: album, artist, coverUrl: imageUrl});

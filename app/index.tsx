@@ -156,19 +156,27 @@ export default function Index() {
         if (albumIndex + 1 < shuffledAlbums.length) {
             setAlbumIndex(albumIndex + 1);
         } else {
-            let pool = albums;
-            if (selectedGenres.length > 0){
-                pool = albums.filter(
-                    (a) => Array.isArray(a.genre) && a.genre.some((g: string) => selectedGenres.includes(g))
-                );
-            }
-            if (shuffleMode === "sides")
-                pool = buildSidesList(pool);
-            const newShuffle = shuffleArray(pool);
-            setShuffledAlbums(newShuffle);
-            setAlbumIndex(0);
+            reshuffleAlbums(); // when you reach the end, reshuffle again
         }
-    }
+    };
+
+    const reshuffleAlbums = () => {
+        let pool = albums;
+
+        if (selectedGenres.length > 0) {
+            pool = albums.filter(
+                (a) => Array.isArray(a.genre) && a.genre.some((g: string) => selectedGenres.includes(g))
+            );
+        }
+
+        if (shuffleMode === "sides") {
+            pool = buildSidesList(pool);
+        }
+
+        const newShuffle = shuffleArray(pool);
+        setShuffledAlbums(newShuffle);
+        setAlbumIndex(0);
+    };
 
     const sendToDb = () => {
         const promise = db.createDocument(
@@ -311,7 +319,10 @@ export default function Index() {
         </Modal>
         <SettingsModal
             visible={settingsMenu}
-            onClose={() => setSettingsMenu(false)}
+            onClose={() => {
+                setSettingsMenu(false);
+                reshuffleAlbums();
+            }}
             shuffleMode={shuffleMode}
             setShuffleMode={setShuffleMode}
             selectedGenres={selectedGenres}

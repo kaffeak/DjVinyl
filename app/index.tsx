@@ -3,6 +3,8 @@ import { LinearGradient } from "expo-linear-gradient";
 import {Databases, Client, ID, Query} from "appwrite";
 import {useState, useEffect} from "react";
 import ShuffleButton from "@/app/shuffleButton";
+import {Ionicons} from "@expo/vector-icons";
+import SettingsModal from "@/app/settingsModal";
 
 const client = new Client()
     .setProject(process.env.EXPO_PUBLIC_APPWRITE_PROJECT_ID ?? "")
@@ -39,6 +41,28 @@ export default function Index() {
         artist: string;
         coverUrl: string;
     } | null>(null);
+
+    const [settingsMenu, setSettingsMenu] = useState(false);
+    const [shuffleMode, setShuffleMode] = useState<"albums" | "sides">("albums");
+    const [selectedGenres, setSelectedGenres] = useState<string[]>([]);
+    const [allGenres, setAllGenres] = useState<string[]>([]);
+
+    const toggleGenre = (genre: string) => {
+        setSelectedGenres((prev) =>
+            prev.includes(genre)
+                ? prev.filter((g) => g !== genre)
+                : [...prev, genre]
+        );
+    };
+
+    const buildSidesList = (albums: any[]) => {
+        return albums.flatMap((album) =>
+            Array.from({ length: album.sides }, (_, i) => ({
+                ...album,
+                side: i + 1,
+            }))
+        );
+    };
 
     const fetchAlbumCover = async (album: string, artist: string) => {
         if (shuffledAlbums[albumIndex].url !== null) {
@@ -99,9 +123,20 @@ export default function Index() {
     useEffect(() => {
         db.listDocuments("68ada3e1001da2d5fb66", "68ada605003cab076573")
             .then((response) => {
-                setAlbums(response.documents);
-                setShuffledAlbums(shuffleArray(response.documents));
+                const docs = response.documents;
+                setAlbums(docs);
+                setShuffledAlbums(shuffleArray(docs));
                 setAlbumIndex(0);
+
+                const genreSet = new Set<string>();
+                docs.forEach((album) => {
+                    if (Array.isArray(album.genres)) {
+                        album.genres.forEach((g: string) => genreSet.add(g));
+                    } else if (typeof album.genres === "string")
+                        genreSet.add(album.genres);
+                })
+                setAllGenres(Array.from(genreSet))
+                //console.log(JSON.stringify(response.documents, null, 2));
             })
             .catch((error) => console.error(error));
     }, []);
@@ -121,7 +156,15 @@ export default function Index() {
         if (albumIndex + 1 < shuffledAlbums.length) {
             setAlbumIndex(albumIndex + 1);
         } else {
-            const newShuffle = shuffleArray(albums);
+            let pool = albums;
+            if (selectedGenres.length > 0){
+                pool = albums.filter(
+                    (a) => Array.isArray(a.genre) && a.genre.some((g: string) => selectedGenres.includes(g))
+                );
+            }
+            if (shuffleMode === "sides")
+                pool = buildSidesList(pool);
+            const newShuffle = shuffleArray(pool);
             setShuffledAlbums(newShuffle);
             setAlbumIndex(0);
         }
@@ -170,6 +213,13 @@ export default function Index() {
           style={{ flex: 1 }}
       >
     <View className="flex-1 ">
+        <View className="flex-row justify-end p-4 mt-6">
+            <Pressable
+                onPress={() => setSettingsMenu(true)}
+            >
+                <Ionicons name="settings-outline" size={28} color="white"/>
+            </Pressable>
+        </View>
         <View className="flex-1 items-center justify-center">
             <Image
                 source={{ uri: currentAlbum?.coverUrl ? currentAlbum.coverUrl : "https://placehold.co/250x250?text=No+Cover", width: 250, height: 250}}
@@ -238,27 +288,36 @@ export default function Index() {
                     <TextInput
                         value={genre}
                         onChangeText={setGenre}
-                        placeholder="Genre"
+                        placeholder="Genres separated by ,"
                         className="border border-gray-300 rounded-lg p-3 mb-6"
                     />
 
-                    <View className="flex-row justify-between">
-                        <Pressable
-                            onPress={() => setAlbumMenu(false)}
-                            className="bg-gray-300 px-4 py-2 rounded-lg"
-                        >
-                            <Text className="text-gray-800 font-semibold">Cancel</Text>
-                        </Pressable>
+                    <View className="flex-row justify-around">
                         <Pressable
                             onPress={addAlbum}
                             className="bg-blue-500 px-4 py-2 rounded-lg"
                         >
                             <Text className="text-white font-semibold">Add</Text>
                         </Pressable>
+                        <Pressable
+                            onPress={() => setAlbumMenu(false)}
+                            className="bg-gray-300 px-4 py-2 rounded-lg"
+                        >
+                            <Text className="text-gray-800 font-semibold">Cancel</Text>
+                        </Pressable>
                     </View>
                 </View>
             </View>
         </Modal>
+        <SettingsModal
+            visible={settingsMenu}
+            onClose={() => setSettingsMenu(false)}
+            shuffleMode={shuffleMode}
+            setShuffleMode={setShuffleMode}
+            selectedGenres={selectedGenres}
+            toggleGenre={toggleGenre}
+            allGenres={allGenres}
+        />
     </View>
   </LinearGradient>
   )

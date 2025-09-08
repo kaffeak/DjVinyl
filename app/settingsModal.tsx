@@ -1,5 +1,6 @@
 import {Modal, Pressable, ScrollView, Text, View} from "react-native";
 import {LinearGradient} from "expo-linear-gradient";
+import * as Haptics from "expo-haptics";
 
 type SettingsModalProps={
     visible: boolean;
@@ -33,7 +34,10 @@ export default function SettingsModal({
                     <Text className="text-2xl font-bold mb-4 text-center text-gray-800">Settings</Text>
                     <View className="flex-row justify-around mb-6">
                         <Pressable
-                            onPress={() => setShuffleMode("albums")}
+                            onPress={() => {
+                                Haptics.selectionAsync();
+                                setShuffleMode("albums")
+                            }}
                             style={{
                                 flex: 1,
                                 marginRight: 8,
@@ -64,7 +68,10 @@ export default function SettingsModal({
                             </LinearGradient>
                         </Pressable>
                         <Pressable
-                            onPress={() => setShuffleMode("sides")}
+                            onPress={() => {
+                                Haptics.selectionAsync();
+                                setShuffleMode("sides")
+                            }}
                             style={{
                                 flex: 1,
                                 marginLeft: 8,
@@ -105,7 +112,10 @@ export default function SettingsModal({
                             return (
                                 <Pressable
                                     key={genre}
-                                    onPress={() => toggleGenre(genre)}
+                                    onPress={() => {
+                                        Haptics.selectionAsync();
+                                        toggleGenre(genre)
+                                    }}
                                     style={{
                                         margin: 4,
                                         borderRadius: 16,
@@ -136,7 +146,10 @@ export default function SettingsModal({
                     </ScrollView>
                     <View className="mt-6 flex-row space-x-2 justify-around items-center">
                         <Pressable
-                            onPress={() => selectedGenres.forEach(g => toggleGenre(g))}
+                            onPress={() => {
+                                Haptics.selectionAsync();
+                                selectedGenres.forEach(g => toggleGenre(g))
+                            }}
                             style={{
                                 borderRadius: 999,
                                 overflow: "hidden",
@@ -158,7 +171,10 @@ export default function SettingsModal({
                             </LinearGradient>
                         </Pressable>
                         <Pressable
-                            onPress={onClose}
+                            onPress={() => {
+                                Haptics.selectionAsync();
+                                onClose()
+                            }}
                             style={{
                                 borderRadius: 999,
                                 overflow: "hidden",

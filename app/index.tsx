@@ -5,6 +5,7 @@ import {useState, useEffect} from "react";
 import ShuffleButton from "@/app/shuffleButton";
 import {Ionicons} from "@expo/vector-icons";
 import SettingsModal from "@/app/settingsModal";
+import * as Haptics from "expo-haptics";
 
 const client = new Client()
     .setProject(process.env.EXPO_PUBLIC_APPWRITE_PROJECT_ID ?? "")
@@ -40,6 +41,7 @@ export default function Index() {
         title: string;
         artist: string;
         coverUrl: string;
+        sideLetter?: string;
     } | null>(null);
 
     const [settingsMenu, setSettingsMenu] = useState(false);
@@ -60,13 +62,14 @@ export default function Index() {
             Array.from({ length: album.sides }, (_, i) => ({
                 ...album,
                 side: i + 1,
+                sideLetter: String.fromCharCode(65 + i), // 65 = "A"
             }))
         );
     };
 
     const fetchAlbumCover = async (album: string, artist: string) => {
         if (shuffledAlbums[albumIndex].url !== null) {
-            setCurrentAlbum({title: album, artist, coverUrl: shuffledAlbums[albumIndex].url});
+            setCurrentAlbum({title: album, artist, coverUrl: shuffledAlbums[albumIndex].url,sideLetter: shuffleMode === "sides" ? shuffledAlbums[albumIndex].sideLetter : undefined});
             return;
         }
         try {
@@ -86,7 +89,7 @@ export default function Index() {
 
             if (!data.releases?.length) {
                 console.log("No release found");
-                setCurrentAlbum({ title: album, artist, coverUrl: "" });
+                setCurrentAlbum({ title: album, artist, coverUrl: "" , sideLetter: shuffleMode === "sides" ? shuffledAlbums[albumIndex].sideLetter : undefined});
                 return;
             }
             console.log("Title: " + currentAlbum?.title + ", Artist: " + currentAlbum?.artist);
@@ -102,7 +105,7 @@ export default function Index() {
 
             if (!coverData.images?.length) {
                 console.log("No cover art found");
-                setCurrentAlbum({ title: album, artist, coverUrl: "" });
+                setCurrentAlbum({ title: album, artist, coverUrl: "" , sideLetter: shuffleMode === "sides" ? shuffledAlbums[albumIndex].sideLetter : undefined});
                 return;
             }
             //implement dubble image if there is a back
@@ -111,22 +114,23 @@ export default function Index() {
                 coverData.images[0].thumbnails?.["500"] ||
                 coverData.images[0].image;
 
-            setCurrentAlbum({title: album, artist, coverUrl: imageUrl});
+            setCurrentAlbum({title: album, artist, coverUrl: imageUrl, sideLetter: shuffleMode === "sides" ? shuffledAlbums[albumIndex].sideLetter : undefined});
 
         } catch (err) {
             console.error("Error fetching album cover:", err);
-            setCurrentAlbum({ title: album, artist, coverUrl: "" });
+            setCurrentAlbum({ title: album, artist, coverUrl: "" , sideLetter: shuffleMode === "sides" ? shuffledAlbums[albumIndex].sideLetter : undefined});
         }
     }
 
     //fetch once on mount
     useEffect(() => {
-        db.listDocuments("68ada3e1001da2d5fb66", "68ada605003cab076573")
+        db.listDocuments("68ada3e1001da2d5fb66", "68ada605003cab076573", [Query.limit(200)])
             .then((response) => {
                 const docs = response.documents;
                 setAlbums(docs);
                 setShuffledAlbums(shuffleArray(docs));
                 setAlbumIndex(0);
+                console.log(docs.length);
 
                 const genreSet = new Set<string>();
                 docs.forEach((album) => {
@@ -165,7 +169,7 @@ export default function Index() {
 
         if (selectedGenres.length > 0) {
             pool = albums.filter(
-                (a) => Array.isArray(a.genre) && a.genre.some((g: string) => selectedGenres.includes(g))
+                (a) => Array.isArray(a.genres) && a.genres.some((g: string) => selectedGenres.includes(g))
             );
         }
 
@@ -176,6 +180,7 @@ export default function Index() {
         const newShuffle = shuffleArray(pool);
         setShuffledAlbums(newShuffle);
         setAlbumIndex(0);
+        console.log(JSON.stringify(shuffledAlbums, null, 2));
     };
 
     const sendToDb = () => {
@@ -186,7 +191,7 @@ export default function Index() {
             {
                 title,
                 sides,
-                genre,
+                genres: genre.split(",").map(g => g.toString()),
                 artist
             }
         );
@@ -223,7 +228,10 @@ export default function Index() {
     <View className="flex-1 ">
         <View className="flex-row justify-end p-4 mt-6">
             <Pressable
-                onPress={() => setSettingsMenu(true)}
+                onPress={() => {
+                    Haptics.selectionAsync();
+                    setSettingsMenu(true);
+                }}
             >
                 <Ionicons name="settings-outline" size={28} color="white"/>
             </Pressable>
@@ -235,7 +243,7 @@ export default function Index() {
 
             />
             <Text className="mt-4 font-bold text-lg text-gray-200 text-center">
-                {currentAlbum ? `${currentAlbum.title} — ${currentAlbum.artist}` : "No album selected"}
+                {currentAlbum ? `${currentAlbum.title} — ${currentAlbum.artist} ${currentAlbum.sideLetter ? ` (Side ${currentAlbum.sideLetter})` : ""}` : "No album selected"}
             </Text>
             <View className="mt-6">
                 <ShuffleButton callParentFunction={shuffleAlbums} />
@@ -244,7 +252,10 @@ export default function Index() {
 
         <View className="items-center mb-16">
             <Pressable
-                onPress={() => setAlbumMenu(true)}
+                onPress={() => {
+                    Haptics.selectionAsync();
+                    setAlbumMenu(true);
+                }}
                 style={{
                     borderRadius: 999, // pill shape
                     overflow: 'hidden', // needed for gradient corners
@@ -302,13 +313,19 @@ export default function Index() {
 
                     <View className="flex-row justify-around">
                         <Pressable
-                            onPress={addAlbum}
+                            onPress={() => {
+                                Haptics.selectionAsync();
+                                addAlbum();
+                            }}
                             className="bg-blue-500 px-4 py-2 rounded-lg"
                         >
                             <Text className="text-white font-semibold">Add</Text>
                         </Pressable>
                         <Pressable
-                            onPress={() => setAlbumMenu(false)}
+                            onPress={() => {
+                                Haptics.selectionAsync();
+                                setAlbumMenu(false)
+                            }}
                             className="bg-gray-300 px-4 py-2 rounded-lg"
                         >
                             <Text className="text-gray-800 font-semibold">Cancel</Text>

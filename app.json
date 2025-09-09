@@ -25,7 +25,9 @@
         "backgroundColor": "#0f172a"
       },
       "edgeToEdgeEnabled": true,
-      "package": "com.alexmaxen.DjVinyl"
+      "package": "com.alexmaxen.DjVinyl",
+      "permissions": ["INTERNET"]
+
     },
     "web": {
       "bundler": "metro",

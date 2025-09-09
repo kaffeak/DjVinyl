@@ -6,6 +6,8 @@ import ShuffleButton from "@/app/shuffleButton";
 import {Ionicons} from "@expo/vector-icons";
 import SettingsModal from "@/app/settingsModal";
 import * as Haptics from "expo-haptics";
+import LoadingScreen from "@/app/loadingScreen";
+import LottieView from "lottie-react-native";
 
 const client = new Client()
     .setProject(process.env.EXPO_PUBLIC_APPWRITE_PROJECT_ID ?? "")
@@ -48,6 +50,7 @@ export default function Index() {
     const [shuffleMode, setShuffleMode] = useState<"albums" | "sides">("albums");
     const [selectedGenres, setSelectedGenres] = useState<string[]>([]);
     const [allGenres, setAllGenres] = useState<string[]>([]);
+    const [isCoverLoading, setIsCoverLoading] = useState(true);
 
     const toggleGenre = (genre: string) => {
         setSelectedGenres((prev) =>
@@ -68,6 +71,7 @@ export default function Index() {
     };
 
     const fetchAlbumCover = async (album: string, artist: string) => {
+        setIsCoverLoading(true);
         if (shuffledAlbums[albumIndex].url !== null) {
             setCurrentAlbum({title: album, artist, coverUrl: shuffledAlbums[albumIndex].url,sideLetter: shuffleMode === "sides" ? shuffledAlbums[albumIndex].sideLetter : undefined});
             return;
@@ -218,6 +222,9 @@ export default function Index() {
         setSides(isNaN(parsed) ? null : parsed);
     }
 
+    if (albums.length === 0) {
+        return <LoadingScreen />;
+    }
   return (
   <LinearGradient
           colors={["#1e293b", "#0f172a"]} // slate/dark blue
@@ -237,11 +244,28 @@ export default function Index() {
             </Pressable>
         </View>
         <View className="flex-1 items-center justify-center">
-            <Image
-                source={{ uri: currentAlbum?.coverUrl ? currentAlbum.coverUrl : "https://placehold.co/250x250?text=No+Cover", width: 250, height: 250}}
-                style={{resizeMode: "contain", borderRadius: 16}}
-
-            />
+            <View style={{
+                width: 250,
+                height: 250,
+                justifyContent: "center",
+                alignItems: "center",
+                position: "relative",
+            }}>
+                {isCoverLoading ? (
+                    <LottieView
+                        source={require("../assets/images/turntable.json")}
+                        autoPlay
+                        loop
+                        style={{width: 180, height: 180, position: "absolute"}}
+                    />
+                ) : null}
+                <Image
+                    source={{ uri: currentAlbum?.coverUrl ? currentAlbum.coverUrl : "https://placehold.co/250x250?text=No+Cover", width: 250, height: 250}}
+                    style={{resizeMode: "contain", borderRadius: 16, position: "absolute", opacity: isCoverLoading ? 0 : 1}}
+                    onLoadStart={() => setIsCoverLoading(true)}
+                    onLoadEnd={() =>  setIsCoverLoading(false)}
+                />
+            </View>
             <Text className="mt-4 font-bold text-lg text-gray-200 text-center">
                 {currentAlbum ? `${currentAlbum.title} — ${currentAlbum.artist} ${currentAlbum.sideLetter ? ` (Side ${currentAlbum.sideLetter})` : ""}` : "No album selected"}
             </Text>

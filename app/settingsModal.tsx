@@ -9,7 +9,7 @@ type SettingsModalProps={
     setShuffleMode: (mode: "albums" | "sides") => void;
     selectedGenres: string[];
     toggleGenre: (genre: string) => void;
-    allGenres: string[];
+    allGenres: Record<string, number>;
 }
 
 export default function SettingsModal({
@@ -21,6 +21,9 @@ export default function SettingsModal({
     toggleGenre,
     allGenres,
     }: SettingsModalProps) {
+    const genres = Object.entries(allGenres)
+      .filter(([_, count]) => count > 1)
+      .sort((a, b) => b[1] - a[1]);
     return (
         <Modal visible={visible} transparent animationType="slide">
             <View className="flex-1 justify-center items-center bg-black/50">
@@ -105,9 +108,10 @@ export default function SettingsModal({
                         contentContainerStyle={{
                             flexDirection: "row",
                             flexWrap: "wrap",
+                            justifyContent: "center",
                         }}
                     >
-                        {allGenres.map((genre) => {
+                        {genres.map(([genre, count]) => {
                             const active = selectedGenres.includes(genre);
                             return (
                                 <Pressable
@@ -117,7 +121,7 @@ export default function SettingsModal({
                                         toggleGenre(genre)
                                     }}
                                     style={{
-                                        margin: 4,
+                                        margin: 5,
                                         borderRadius: 16,
                                         overflow: "hidden",
                                         elevation: active ? 3 : 0,
@@ -135,10 +139,11 @@ export default function SettingsModal({
                                     >
                                         <Text
                                             style={{
+                                                fontSize: 14,
                                                 color: active ? "white" :  "#374151",
                                                 fontWeight: "600",
                                             }}
-                                        >{genre}</Text>
+                                        >{genre} ({count})</Text>
                                     </LinearGradient>
                                 </Pressable>
                             )

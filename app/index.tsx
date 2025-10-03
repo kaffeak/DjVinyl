@@ -49,7 +49,7 @@ export default function Index() {
     const [settingsMenu, setSettingsMenu] = useState(false);
     const [shuffleMode, setShuffleMode] = useState<"albums" | "sides">("albums");
     const [selectedGenres, setSelectedGenres] = useState<string[]>([]);
-    const [allGenres, setAllGenres] = useState<string[]>([]);
+    const [allGenres, setAllGenres] = useState<Record<string, number>>({});
     const [isCoverLoading, setIsCoverLoading] = useState(true);
 
     const toggleGenre = (genre: string) => {
@@ -134,17 +134,18 @@ export default function Index() {
                 setAlbums(docs);
                 setShuffledAlbums(shuffleArray(docs));
                 setAlbumIndex(0);
-                console.log(docs.length);
 
-                const genreSet = new Set<string>();
+                const genreCount: Record<string, number> = {};
                 docs.forEach((album) => {
                     if (Array.isArray(album.genres)) {
-                        album.genres.forEach((g: string) => genreSet.add(g));
-                    } else if (typeof album.genres === "string")
-                        genreSet.add(album.genres);
+                        album.genres.forEach((g: string) => {
+                            genreCount[g] = (genreCount[g] || 0) + 1;
+                        });
+                    } else if (typeof album.genres === "string"){
+                        genreCount[album.genres] = (genreCount[album.genres] || 0) + 1;
+                    }
                 })
-                setAllGenres(Array.from(genreSet))
-                //console.log(JSON.stringify(response.documents, null, 2));
+                setAllGenres(genreCount)
             })
             .catch((error) => console.error(error));
     }, []);
@@ -195,7 +196,6 @@ export default function Index() {
             {
                 title,
                 sides,
-                genres: genre.split(",").map(g => g.toString()),
                 artist
             }
         );
@@ -214,7 +214,6 @@ export default function Index() {
         setTitle("");
         setArtist("");
         setSides(null);
-        setGenre("");
     };
 
     const handleSetSides = (input: string) => {
@@ -313,26 +312,23 @@ export default function Index() {
                         value={title}
                         onChangeText={setTitle}
                         placeholder="Title"
+                        placeholderTextColor="#9CA3AF"
                         className="border border-gray-300 rounded-lg p-3 mb-3"
                     />
                     <TextInput
                         value={artist}
                         onChangeText={setArtist}
                         placeholder="Artist"
+                        placeholderTextColor="#9CA3AF"
                         className="border border-gray-300 rounded-lg p-3 mb-3"
                     />
                     <TextInput
                         value={sides !== null ? sides.toString() : ""}
                         onChangeText={handleSetSides}
                         placeholder="Number of Sides"
+                        placeholderTextColor="#9CA3AF"
                         keyboardType="numeric"
                         className="border border-gray-300 rounded-lg p-3 mb-3"
-                    />
-                    <TextInput
-                        value={genre}
-                        onChangeText={setGenre}
-                        placeholder="Genres separated by ,"
-                        className="border border-gray-300 rounded-lg p-3 mb-6"
                     />
 
                     <View className="flex-row justify-around">

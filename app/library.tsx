@@ -66,7 +66,7 @@ export default function ShowLibrary({
         end={[0, 1]}
         style={{ flex: 1 }}
       >
-        <View className="flex-1">
+        <View className="flex-1 mt-6">
           <ScrollView contentContainerStyle={{ paddingBottom: 120 }}>
             <View className="flex flex-row flex-wrap">
               {sortedAlbums.map((album, index) => (
@@ -84,7 +84,7 @@ export default function ShowLibrary({
             </View>
           </ScrollView>
           <AlbumInfoModal visible={!!selected} album={selected} onClose={() => setSelected(null)}/>
-          <View className="absolute bottom-5 left-0 right-0 items-center p-4 ">
+          <View className="absolute bottom-0 mb-16 left-0 right-0 items-center p-4 ">
             <Pressable
               onPress={() => {
                 Haptics.selectionAsync();

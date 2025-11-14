@@ -8,6 +8,7 @@ import SettingsModal from "@/app/settingsModal";
 import * as Haptics from "expo-haptics";
 import LoadingScreen from "@/app/loadingScreen";
 import LottieView from "lottie-react-native";
+import ShowLibrary from "@/app/library";
 
 const client = new Client()
     .setProject(process.env.EXPO_PUBLIC_APPWRITE_PROJECT_ID ?? "")
@@ -46,6 +47,7 @@ export default function Index() {
         sideLetter?: string;
     } | null>(null);
 
+    const [library, setLibrary] = useState(false);
     const [settingsMenu, setSettingsMenu] = useState(false);
     const [shuffleMode, setShuffleMode] = useState<"albums" | "sides">("albums");
     const [selectedGenres, setSelectedGenres] = useState<string[]>([]);
@@ -232,7 +234,15 @@ export default function Index() {
           style={{ flex: 1 }}
       >
     <View className="flex-1 ">
-        <View className="flex-row justify-end p-4 mt-6">
+        <View className="flex-row justify-between p-4 mt-6">
+            <Pressable
+              onPress={() => {
+                  Haptics.selectionAsync();
+                  setLibrary(true);
+              }}
+            >
+                <Ionicons name="library-outline" size={28} color="white"/>
+            </Pressable>
             <Pressable
                 onPress={() => {
                     Haptics.selectionAsync();
@@ -365,6 +375,11 @@ export default function Index() {
             selectedGenres={selectedGenres}
             toggleGenre={toggleGenre}
             allGenres={allGenres}
+        />
+        <ShowLibrary
+          visible={library}
+          albums={shuffledAlbums}
+          onClose={() => {setLibrary(false)}}
         />
     </View>
   </LinearGradient>

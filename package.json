@@ -5,8 +5,8 @@
   "scripts": {
     "start": "expo start",
     "reset-project": "node ./scripts/reset-project.js",
-    "android": "expo start --android",
-    "ios": "expo start --ios",
+    "android": "expo run:android",
+    "ios": "expo run:ios",
     "web": "expo start --web",
     "lint": "expo lint"
   },
@@ -15,6 +15,7 @@
     "@react-navigation/bottom-tabs": "^7.3.10",
     "@react-navigation/elements": "^2.3.8",
     "@react-navigation/native": "^7.1.6",
+    "android-platform-tools": "^3.0.2",
     "appwrite": "^19.0.0",
     "expo": "^54.0.12",
     "expo-blur": "~15.0.7",
@@ -30,6 +31,7 @@
     "expo-symbols": "~1.0.7",
     "expo-system-ui": "~6.0.7",
     "expo-web-browser": "~15.0.8",
+    "invert-color": "^2.0.0",
     "lottie-ios": "^4.5.1",
     "lottie-react-native": "~7.3.1",
     "nativewind": "^4.1.23",

@@ -66,7 +66,7 @@ export default function ShowLibrary({
         end={[0, 1]}
         style={{ flex: 1 }}
       >
-        <View className="flex-1 mt-6">
+        <View className="flex-1 mt-10">
           <ScrollView contentContainerStyle={{ paddingBottom: 120 }}>
             <View className="flex flex-row flex-wrap">
               {sortedAlbums.map((album, index) => (

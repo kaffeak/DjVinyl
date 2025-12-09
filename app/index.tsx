@@ -1,7 +1,7 @@
 import {Pressable, Text, TextInput, View, Image, Modal} from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import {Databases, Client, ID, Query} from "appwrite";
-import {useState, useEffect} from "react";
+import {useState, useEffect, useRef} from "react";
 import ShuffleButton from "@/app/shuffleButton";
 import {Ionicons} from "@expo/vector-icons";
 import SettingsModal from "@/app/settingsModal";
@@ -30,11 +30,13 @@ const shuffleArray = <T,>(array: T[]): T[] => {
 };
 
 export default function Index() {
+    const [owner, setOwner] = useState(process.env.EXPO_PUBLIC_APPWRITE_LIBRARY_ALEX_ID);
+
     const [albumMenu, setAlbumMenu] = useState(false);
     const [title, setTitle] = useState("");
     const [artist, setArtist] = useState("");
     const [sides, setSides] = useState<number | null>(null);
-    const [genre, setGenre] = useState("");
+    const [genres, setGenres] = useState<string[] | null>(null);
 
     const [albums, setAlbums] = useState<any[]>([]);
     const [shuffledAlbums, setShuffledAlbums] = useState<any[]>([]);
@@ -54,11 +56,11 @@ export default function Index() {
     const [allGenres, setAllGenres] = useState<Record<string, number>>({});
     const [isCoverLoading, setIsCoverLoading] = useState(true);
 
-    const toggleGenre = (genre: string) => {
+    const toggleGenre = (thisGenre: string) => {
         setSelectedGenres((prev) =>
-            prev.includes(genre)
-                ? prev.filter((g) => g !== genre)
-                : [...prev, genre]
+            prev.includes(thisGenre)
+                ? prev.filter((g) => g !== thisGenre)
+                : [...prev, thisGenre]
         );
     };
 
@@ -79,58 +81,156 @@ export default function Index() {
             return;
         }
         try {
-            const query = `release/?query=release:${encodeURIComponent(album)} AND artist:${encodeURIComponent(artist)}&fmt=json`;
-            const mbUrl = `https://musicbrainz.org/ws/2/${query}`;
-            const response = await fetch(mbUrl, {
+            const params = new URLSearchParams({
+                query: `release:${album} AND artist:${artist}`,
+                fmt: "json",
+            });
+            const mbUrl = `https://musicbrainz.org/ws/2/release/?${params.toString()}`;
+            console.log("MusicBrainz release search URL:", mbUrl);
+
+            const mbResponse = await fetch(mbUrl, {
                 headers: {
-                    "User-Agent": "DjVinyl/1.0.0 (kaffe.ak46@gmail.com)"
-                }
+                    "User-Agent": "DjVinyl/1.0.0 (kaffe.ak46@gmail.com)",
+                    "Accept": "application/json",
+                },
             });
 
-            if (!response.ok) {
-                throw new Error(`MusicBrainz request failed: ${response.status}`);
+            if (!mbResponse.ok) {
+                throw new Error(`MusicBrainz request failed: ${mbResponse.status}`);
             }
 
-            const data = await response.json();
+            const data = await mbResponse.json();
 
             if (!data.releases?.length) {
                 console.log("No release found");
-                setCurrentAlbum({ title: album, artist, coverUrl: "" , sideLetter: shuffleMode === "sides" ? shuffledAlbums[albumIndex].sideLetter : undefined});
+                setCurrentAlbum({
+                    title: album,
+                    artist,
+                    coverUrl: "",
+                    sideLetter: shuffleMode === "sides" ? shuffledAlbums[albumIndex].sideLetter : undefined,
+                });
                 return;
             }
-            console.log("Title: " + currentAlbum?.title + ", Artist: " + currentAlbum?.artist);
+            const release = data.releases[0];
+            const releaseId: string = release.id;
+            const releaseGroupId: string | undefined = release["release-group"]?.id;
 
-            const releaseId = data.releases[0].id;
-            const coverResponse = await fetch(`https://coverartarchive.org/release/${releaseId}`, {});
+            console.log("First release:", release);
+            console.log("Using releaseId:", releaseId);
+            console.log("Using releaseGroupId:", releaseGroupId);
 
-            if (!coverResponse.ok) {
-                throw new Error(`CoverArt request failed: ${coverResponse.status}`);
+            const normalizeUrl = (url?: string) =>
+              url && url.startsWith("http://")
+                ? url.replace("http://", "https://")
+                : url;
+
+            const userAgentHeaders = {
+                "User-Agent": "DjVinyl/1.0.0 (kaffe.ak46@gmail.com)",
+                "Accept": "application/json",
+            };
+
+            let coverData: any | null = null;
+
+            let coverUrl = `https://coverartarchive.org/release/${releaseId}/`;
+            console.log("CoverArt URL (release):", coverUrl);
+
+            let coverResponse = await fetch(coverUrl, { headers: userAgentHeaders });
+            console.log("CoverArt status (release):", coverResponse.status, coverResponse.url);
+
+            if (coverResponse.ok) {
+                coverData = await coverResponse.json();
+            } else if (coverResponse.status === 404 && releaseGroupId) {
+                // 4. Fallback: try release-group if release has no art
+                const rgUrl = `https://coverartarchive.org/release-group/${releaseGroupId}/`;
+                console.log("No art on release, trying release-group URL:", rgUrl);
+
+                coverResponse = await fetch(rgUrl, { headers: userAgentHeaders });
+                console.log(
+                  "CoverArt status (release-group):",
+                  coverResponse.status,
+                  coverResponse.url
+                );
+
+                if (coverResponse.ok) {
+                    coverData = await coverResponse.json();
+                } else if (coverResponse.status !== 404) {
+                    const body = await coverResponse.text();
+                    console.log(
+                      "CoverArt error body (release-group, first 200 chars):",
+                      body.slice(0, 200)
+                    );
+                    throw new Error(
+                      `CoverArt release-group request failed: ${coverResponse.status}`
+                    );
+                }
+            } else if (!coverResponse.ok) {
+                // Some other error (500, etc.)
+                const body = await coverResponse.text();
+                console.log(
+                  "CoverArt error body (release, first 200 chars):",
+                  body.slice(0, 200)
+                );
+                throw new Error(`CoverArt release request failed: ${coverResponse.status}`);
             }
 
-            const coverData = await coverResponse.json();
-
-            if (!coverData.images?.length) {
-                console.log("No cover art found");
-                setCurrentAlbum({ title: album, artist, coverUrl: "" , sideLetter: shuffleMode === "sides" ? shuffledAlbums[albumIndex].sideLetter : undefined});
+            if (!coverData || !coverData.images?.length) {
+                console.log("No cover art images found");
+                setCurrentAlbum({
+                    title: album,
+                    artist,
+                    coverUrl: "",
+                    sideLetter: shuffleMode === "sides" ? shuffledAlbums[albumIndex].sideLetter : undefined,
+                });
                 return;
             }
-            //implement dubble image if there is a back
+
+            const images: any[] = coverData.images;
+            const frontImage = images.find((img) => img.front) ?? images[0];
+
             const imageUrl =
-                coverData.images[0].thumbnails?.["1200"] ||
-                coverData.images[0].thumbnails?.["500"] ||
-                coverData.images[0].image;
+              normalizeUrl(frontImage.thumbnails?.["1200"]) ||
+              normalizeUrl(frontImage.thumbnails?.["500"]) ||
+              normalizeUrl(frontImage.image);
 
-            setCurrentAlbum({title: album, artist, coverUrl: imageUrl, sideLetter: shuffleMode === "sides" ? shuffledAlbums[albumIndex].sideLetter : undefined});
+            console.log("Using cover art URL:", imageUrl);
+            setAlbums(prev => {
+                let idToUpdate: string | null = null;
+                const updated = prev.map(item=> {
+                    if( item.title === album && item.artist === artist){
+                        idToUpdate = item.$id;
+                        return { ...item, url: imageUrl };
+                    }
+                    return item;
+                });
+                if(idToUpdate !== null){
+                    updateDb(idToUpdate, imageUrl).catch(err => console.error("Failed to update DB:", err));
+                }
+                return updated;
+            })
 
+
+            setCurrentAlbum({
+                title: album,
+                artist,
+                coverUrl: imageUrl ?? "",
+                sideLetter: shuffleMode === "sides" ? shuffledAlbums[albumIndex].sideLetter : undefined,
+            });
         } catch (err) {
             console.error("Error fetching album cover:", err);
-            setCurrentAlbum({ title: album, artist, coverUrl: "" , sideLetter: shuffleMode === "sides" ? shuffledAlbums[albumIndex].sideLetter : undefined});
+            setCurrentAlbum({
+                title: album,
+                artist,
+                coverUrl: "",
+                sideLetter: shuffleMode === "sides" ? shuffledAlbums[albumIndex].sideLetter : undefined,
+            });
+        } finally {
+            setIsCoverLoading(false);
         }
-    }
+    };
 
     //fetch once on mount
     useEffect(() => {
-        db.listDocuments("68ada3e1001da2d5fb66", "68ada605003cab076573", [Query.limit(200)])
+        db.listDocuments(process.env.EXPO_PUBLIC_APPWRITE_DATABASE_ID ?? "", owner ?? "", [Query.limit(200)])
             .then((response) => {
                 const docs = response.documents;
                 setAlbums(docs);
@@ -150,7 +250,7 @@ export default function Index() {
                 setAllGenres(genreCount)
             })
             .catch((error) => console.error(error));
-    }, []);
+    }, [owner]);
 
     useEffect(() => {
         if (shuffledAlbums.length > 0 && albumIndex < shuffledAlbums.length) {
@@ -192,13 +292,14 @@ export default function Index() {
 
     const sendToDb = () => {
         const promise = db.createDocument(
-            '68ada3e1001da2d5fb66',
-            '68ada605003cab076573',
+            process.env.EXPO_PUBLIC_APPWRITE_DATABASE_ID ?? "",
+            owner ?? "",
             ID.unique(),
             {
                 title,
                 sides,
-                artist
+                artist,
+                genres
             }
         );
 
@@ -209,18 +310,54 @@ export default function Index() {
         });
     }
 
+    const updateDb = async (id: string, newUrl?: string, newGenres?: string[]): Promise<void> => {
+        const data: {
+            url?: string;
+            genres?: string[];
+        } = {};
+
+        if(typeof newUrl !== "undefined") {
+            data.url = newUrl;
+        }
+        if(typeof newGenres !== "undefined") {
+            data.genres = newGenres;
+        }
+        if(Object.keys(data).length === 0) {
+            console.log("updateDb called with no changes; skipping update.");
+            return;
+        }
+        try {
+            await db.updateDocument(
+              process.env.EXPO_PUBLIC_APPWRITE_DATABASE_ID ?? "",
+              owner ?? "",
+              id,
+              data
+            )
+        } catch (err) {
+            console.error("updateDb error:", err);
+            throw err;
+        }
+
+    }
+
 
     const addAlbum = () => {
         sendToDb();
-        console.log("Adding album:", {title, artist, sides, genre});
+        console.log("Adding album:", {title, artist, sides, genres});
         setTitle("");
         setArtist("");
         setSides(null);
+        setGenres(null);
     };
 
     const handleSetSides = (input: string) => {
         const parsed = parseInt(input, 10);
         setSides(isNaN(parsed) ? null : parsed);
+    }
+
+    const setGenresFunc = (input: string) => {
+        const genreList = input.toLowerCase().split(",");
+        setGenres(genreList);
     }
 
     if (albums.length === 0) {
@@ -250,6 +387,16 @@ export default function Index() {
                 }}
             >
                 <Ionicons name="settings-outline" size={28} color="white"/>
+            </Pressable>
+        </View>
+        <View className="flex-1 items-center">
+            <Pressable
+              onPress={() => {
+                  Haptics.selectionAsync();
+                  setOwner(owner === process.env.EXPO_PUBLIC_APPWRITE_LIBRARY_ALEX_ID ? process.env.EXPO_PUBLIC_APPWRITE_LIBRARY_MATS_ID : process.env.EXPO_PUBLIC_APPWRITE_LIBRARY_ALEX_ID)
+              }
+            }>
+                <Text className="mt-4 font-bold text-lg text-gray-200 text-center">{owner === process.env.EXPO_PUBLIC_APPWRITE_LIBRARY_ALEX_ID ? "Alex" : "Mats and Sylvias"} collection</Text>
             </Pressable>
         </View>
         <View className="flex-1 items-center justify-center">
@@ -319,6 +466,7 @@ export default function Index() {
                     <Text className="text-2xl font-bold mb-6 text-center text-gray-800">Add New Album</Text>
 
                     <TextInput
+                        autoFocus={true}
                         value={title}
                         onChangeText={setTitle}
                         placeholder="Title"
@@ -340,12 +488,20 @@ export default function Index() {
                         keyboardType="numeric"
                         className="border border-gray-300 rounded-lg p-3 mb-3"
                     />
+                    <TextInput
+                      value={genres !== null ? genres.toString() : ""}
+                      onChangeText={setGenresFunc}
+                      placeholder="Genres (separated by , )"
+                      placeholderTextColor="#9CA3AF"
+                      className="border border-gray-300 rounded-lg p-3 mb-3"
+                    />
 
                     <View className="flex-row justify-around">
                         <Pressable
                             onPress={() => {
                                 Haptics.selectionAsync();
                                 addAlbum();
+
                             }}
                             className="bg-blue-500 px-4 py-2 rounded-lg"
                         >

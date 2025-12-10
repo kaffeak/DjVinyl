@@ -143,7 +143,7 @@ export default function SettingsModal({
                                                 color: active ? "white" :  "#374151",
                                                 fontWeight: "600",
                                             }}
-                                        >{genre} ({count})</Text>
+                                        >{genre.charAt(0).toUpperCase() + genre.slice(1)} ({count})</Text>
                                     </LinearGradient>
                                 </Pressable>
                             )

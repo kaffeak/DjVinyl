@@ -15,12 +15,14 @@ type libraryProps = {
   }[],
   onClose: () => void;
   visible: boolean;
+  onUpdateGenres: (albumTitle: string, albumArtist: string, genres: string[]) => void;
 }
 
 export default function ShowLibrary({
   albums,
   onClose,
   visible,
+  onUpdateGenres,
   }: libraryProps) {
   const [selected, setSelected] = useState<{
     title: string;
@@ -71,7 +73,10 @@ export default function ShowLibrary({
             <View className="flex flex-row flex-wrap">
               {sortedAlbums.map((album, index) => (
                 <View key={index} style={{width: itemSize, marginLeft: 12, marginBottom: 12}}>
-                  <TouchableOpacity onPress={() => setSelected(album)} activeOpacity={0.85}>
+                  <TouchableOpacity onPress={() => {
+                    Haptics.selectionAsync();
+                    setSelected(album)
+                  }} activeOpacity={0.85}>
                     <Image
                       source={{ uri: album?.url ? album.url : "https://placehold.co/250x250?text=No+Cover"}}
                       className="w-full aspect-square rounded-xl"
@@ -83,7 +88,16 @@ export default function ShowLibrary({
               ))}
             </View>
           </ScrollView>
-          <AlbumInfoModal visible={!!selected} album={selected} onClose={() => setSelected(null)}/>
+          <AlbumInfoModal
+            visible={!!selected}
+            album={selected}
+            onClose={() => setSelected(null)}
+            onUpdateGenres={(newGenres) => {
+              if(!selected) return;
+              sortedAlbums[sortedAlbums.indexOf(selected)].genres = newGenres;
+              onUpdateGenres(selected.title, selected.artist, newGenres);
+            }}
+          />
           <View className="absolute bottom-0 mb-16 left-0 right-0 items-center p-4 ">
             <Pressable
               onPress={() => {

@@ -9,13 +9,14 @@ import * as Haptics from "expo-haptics";
 import LoadingScreen from "@/app/loadingScreen";
 import LottieView from "lottie-react-native";
 import ShowLibrary from "@/app/library";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const client = new Client()
     .setProject(process.env.EXPO_PUBLIC_APPWRITE_PROJECT_ID ?? "")
     .setEndpoint(process.env.EXPO_PUBLIC_APPWRITE_ENDPOINT ?? "");
 
 export const db = new Databases(client);
-
+const LAST_LIBRARY_KEY = "lastLibrary";
 
 //database id: 68ada3e1001da2d5fb66
 //collection id: 68ada605003cab076573
@@ -30,7 +31,8 @@ const shuffleArray = <T,>(array: T[]): T[] => {
 };
 
 export default function Index() {
-    const [owner, setOwner] = useState(process.env.EXPO_PUBLIC_APPWRITE_LIBRARY_ALEX_ID);
+    const [owner, setOwner] = useState("");
+    const [isReady, setIsReady] = useState(false);
 
     const [albumMenu, setAlbumMenu] = useState(false);
     const [title, setTitle] = useState("");
@@ -55,6 +57,22 @@ export default function Index() {
     const [selectedGenres, setSelectedGenres] = useState<string[]>([]);
     const [allGenres, setAllGenres] = useState<Record<string, number>>({});
     const [isCoverLoading, setIsCoverLoading] = useState(true);
+
+    useEffect(() => {
+        (async () => {
+            try {
+                const saved = await AsyncStorage.getItem(LAST_LIBRARY_KEY);
+                if (saved === process.env.EXPO_PUBLIC_APPWRITE_LIBRARY_MATS_ID && saved !== null)
+                    setOwner(saved);
+                else
+                    setOwner(process.env.EXPO_PUBLIC_APPWRITE_LIBRARY_ALEX_ID ?? "");
+            } catch (err) {
+                console.log("Failed to load last library", err);
+            } finally {
+                setIsReady(true);
+            }
+        })();
+    }, []);
 
     const toggleGenre = (thisGenre: string) => {
         setSelectedGenres((prev) =>
@@ -290,24 +308,26 @@ export default function Index() {
         console.log(JSON.stringify(shuffledAlbums, null, 2));
     };
 
-    const sendToDb = () => {
-        const promise = db.createDocument(
-            process.env.EXPO_PUBLIC_APPWRITE_DATABASE_ID ?? "",
-            owner ?? "",
-            ID.unique(),
-            {
-                title,
-                sides,
-                artist,
-                genres
-            }
-        );
-
-        promise.then(function (response) {
-            console.log(response);
-        }, function (error) {
-            console.log(error);
-        });
+    const sendToDb = async () => {
+        const newId = ID.unique();
+        try {
+            const response = await db.createDocument(
+              process.env.EXPO_PUBLIC_APPWRITE_DATABASE_ID ?? "",
+              owner ?? "",
+              newId,
+              {
+                  title,
+                  sides,
+                  artist,
+                  genres
+              }
+            );
+            console.log("Created doc:", response);
+            return response;
+        } catch (error) {
+            console.error("Error creating document: ", error);
+            throw error;
+        }
     }
 
     const updateDb = async (id: string, newUrl?: string, newGenres?: string[]): Promise<void> => {
@@ -328,8 +348,8 @@ export default function Index() {
         }
         try {
             await db.updateDocument(
-              process.env.EXPO_PUBLIC_APPWRITE_DATABASE_ID ?? "",
-              owner ?? "",
+              process.env.EXPO_PUBLIC_APPWRITE_DATABASE_ID!,
+              owner!,
               id,
               data
             )
@@ -340,9 +360,30 @@ export default function Index() {
 
     }
 
+    const handleUpdateGenres = async (albumTitle: string, albumArtist: string, newGenres: string[]) => {
+        setAlbums(prev => {
+            let idToUpdate: string | null = null;
+            const updated = prev.map(item => {
+                if (item.title === albumTitle && item.artist === albumArtist) {
+                    idToUpdate = item.$id;
+                    return {...item, genres: newGenres};
+                }
+                return item;
+            });
+            if (idToUpdate !== null) {
+                try {
+                    updateDb(idToUpdate, undefined, newGenres);
+                } catch (err) {
+                    console.error("Failed to update genres in DB", err);
+                }
+            }
+            return updated;
+        })
+    }
 
-    const addAlbum = () => {
-        sendToDb();
+    const addAlbum = async () => {
+        const response = await sendToDb();
+        setAlbums(prev => [...prev, response]);
         console.log("Adding album:", {title, artist, sides, genres});
         setTitle("");
         setArtist("");
@@ -358,6 +399,25 @@ export default function Index() {
     const setGenresFunc = (input: string) => {
         const genreList = input.toLowerCase().split(",");
         setGenres(genreList);
+    }
+
+    const changeLibrary = () => {
+        const newLib = owner === process.env.EXPO_PUBLIC_APPWRITE_LIBRARY_ALEX_ID ? process.env.EXPO_PUBLIC_APPWRITE_LIBRARY_MATS_ID : process.env.EXPO_PUBLIC_APPWRITE_LIBRARY_ALEX_ID;
+        if(newLib){
+            setOwner(newLib);
+            AsyncStorage.setItem(LAST_LIBRARY_KEY, newLib).catch(err =>
+                console.log("Failed to save last library", err));
+        }
+    }
+    if(!isReady) {
+        return (
+          <LottieView
+            source={require("../assets/images/turntable.json")}
+            autoPlay
+            loop
+            style={{width: 180, height: 180, position: "absolute"}}
+          />
+        );
     }
 
     if (albums.length === 0) {
@@ -380,6 +440,15 @@ export default function Index() {
             >
                 <Ionicons name="library-outline" size={28} color="white"/>
             </Pressable>
+            <View className="flex-1 items-center mt-5">
+                <Pressable
+                  onPress={() => {
+                      Haptics.selectionAsync();
+                      changeLibrary();
+                  }}>
+                    <Text className="mt-4 font-bold text-3xl text-gray-200 text-center">{owner === process.env.EXPO_PUBLIC_APPWRITE_LIBRARY_ALEX_ID ? "Alex" : "Mats and Sylvias"} collection</Text>
+                </Pressable>
+            </View>
             <Pressable
                 onPress={() => {
                     Haptics.selectionAsync();
@@ -389,16 +458,7 @@ export default function Index() {
                 <Ionicons name="settings-outline" size={28} color="white"/>
             </Pressable>
         </View>
-        <View className="flex-1 items-center">
-            <Pressable
-              onPress={() => {
-                  Haptics.selectionAsync();
-                  setOwner(owner === process.env.EXPO_PUBLIC_APPWRITE_LIBRARY_ALEX_ID ? process.env.EXPO_PUBLIC_APPWRITE_LIBRARY_MATS_ID : process.env.EXPO_PUBLIC_APPWRITE_LIBRARY_ALEX_ID)
-              }
-            }>
-                <Text className="mt-4 font-bold text-lg text-gray-200 text-center">{owner === process.env.EXPO_PUBLIC_APPWRITE_LIBRARY_ALEX_ID ? "Alex" : "Mats and Sylvias"} collection</Text>
-            </Pressable>
-        </View>
+
         <View className="flex-1 items-center justify-center">
             <View style={{
                 width: 250,
@@ -501,7 +561,6 @@ export default function Index() {
                             onPress={() => {
                                 Haptics.selectionAsync();
                                 addAlbum();
-
                             }}
                             className="bg-blue-500 px-4 py-2 rounded-lg"
                         >
@@ -535,6 +594,7 @@ export default function Index() {
         <ShowLibrary
           visible={library}
           albums={shuffledAlbums}
+          onUpdateGenres={handleUpdateGenres}
           onClose={() => {setLibrary(false)}}
         />
     </View>

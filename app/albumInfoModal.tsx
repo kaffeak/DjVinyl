@@ -14,6 +14,7 @@ import {
 } from "react-native";
 import {LinearGradient} from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
+import pressable from "react-native-gesture-handler/src/components/Pressable";
 
 type AndroidColors = {
   average?: string;
@@ -42,16 +43,18 @@ interface Props {
   onClose: () => void;
   cardSize?: number;
   onUpdateGenres?: (genres: string[]) => void;
+  onRemoveAlbum?: (album: Album) => void;
 }
 
 const { width: screenWidth } = Dimensions.get("window");
 
 export default function AlbumInfoModal({
- visible,
- album,
- onClose,
- cardSize = Math.floor(screenWidth * 0.82),
- onUpdateGenres,
+  visible,
+  album,
+  onClose,
+  cardSize = Math.floor(screenWidth * 0.82),
+  onUpdateGenres,
+  onRemoveAlbum,
 }: Props) {
   const [colors, setColors] = useState<AndroidColors | null>(null)
   const [top, setTop] = useState<string>("#1e293b")
@@ -137,6 +140,11 @@ export default function AlbumInfoModal({
     onUpdateGenres?.(updated);
   }
 
+  const handleRemoveAlbum = (album : Album) => {
+    if(!localAlbum) return;
+    onRemoveAlbum?.(album);
+  }
+
   if (!localAlbum) return null;
 
   const translateY = anim.interpolate({ inputRange: [0, 1], outputRange: [40, 0] });
@@ -164,6 +172,19 @@ export default function AlbumInfoModal({
             ]}
           >
             <Image source={{ uri: localAlbum.url }} style={[styles.image, { width: cardSize, height: cardSize }]} resizeMode="cover" />
+            {editGenres && (
+              <Pressable
+                style={styles.minusBadgeAlbum}
+                onPress={() => {
+                  Haptics.selectionAsync();
+                  handleRemoveAlbum(localAlbum);
+                }}
+              >
+                <View >
+                  <Text style={{ color: "#fff", fontWeight: "bold", fontSize: 10 }}>−</Text>
+                </View>
+              </Pressable>
+            )}
             <LinearGradient
               colors={[top, bottom]}
               style={[styles.info]}
@@ -181,7 +202,10 @@ export default function AlbumInfoModal({
                         key={`${g}-${i}`}
                         disabled={!editGenres}
                         onPress={() => {
-                          if (editGenres) handleRemoveGenre(g);
+                          if (editGenres) {
+                            Haptics.selectionAsync();
+                            handleRemoveGenre(g);
+                          }
                         }}
                         style={[styles.genreChip, { backgroundColor: invert(bottom), position: "relative" }]}
                       >
@@ -251,7 +275,19 @@ const styles = StyleSheet.create({
     right: -4,
     width: 16,
     height: 16,
-    borderRadius: 8,
+    borderRadius: 20,
+    backgroundColor: "red",
+    alignItems: "center",
+    justifyContent: "center",
+    elevation: 3,
+  },
+  minusBadgeAlbum: {
+    position: "absolute",
+    top: 5,
+    right: 5,
+    width: 20,
+    height: 20,
+    borderRadius: 20,
     backgroundColor: "red",
     alignItems: "center",
     justifyContent: "center",

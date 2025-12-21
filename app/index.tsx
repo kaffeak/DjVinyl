@@ -61,6 +61,16 @@ export default function Index() {
     useEffect(() => {
         (async () => {
             try {
+                const response = await db.listTables()
+
+            } catch (err) {
+                console.log("Failed to load last library", err);
+            } finally {
+                setIsReady(true);
+            }
+        })();
+        (async () => {
+            try {
                 const saved = await AsyncStorage.getItem(LAST_LIBRARY_KEY);
                 if (saved === process.env.EXPO_PUBLIC_APPWRITE_LIBRARY_MATS_ID && saved !== null)
                     setOwner(saved);
@@ -246,7 +256,6 @@ export default function Index() {
         }
     };
 
-    //fetch once on mount
     useEffect(() => {
         db.listDocuments(process.env.EXPO_PUBLIC_APPWRITE_DATABASE_ID ?? "", owner ?? "", [Query.limit(200)])
             .then((response) => {
@@ -254,21 +263,24 @@ export default function Index() {
                 setAlbums(docs);
                 setShuffledAlbums(shuffleArray(docs));
                 setAlbumIndex(0);
-
-                const genreCount: Record<string, number> = {};
-                docs.forEach((album) => {
-                    if (Array.isArray(album.genres)) {
-                        album.genres.forEach((g: string) => {
-                            genreCount[g] = (genreCount[g] || 0) + 1;
-                        });
-                    } else if (typeof album.genres === "string"){
-                        genreCount[album.genres] = (genreCount[album.genres] || 0) + 1;
-                    }
-                })
-                setAllGenres(genreCount)
             })
             .catch((error) => console.error(error));
     }, [owner]);
+
+    useEffect(() => {
+        reshuffleAlbums();
+        const genreCount: Record<string, number> = {};
+        albums.forEach((album) => {
+            if (Array.isArray(album.genres)) {
+                album.genres.forEach((g: string) => {
+                    genreCount[g] = (genreCount[g] || 0) + 1;
+                });
+            } else if (typeof album.genres === "string"){
+                genreCount[album.genres] = (genreCount[album.genres] || 0) + 1;
+            }
+        })
+        setAllGenres(genreCount)
+    }, [albums]);
 
     useEffect(() => {
         if (shuffledAlbums.length > 0 && albumIndex < shuffledAlbums.length) {
@@ -305,7 +317,7 @@ export default function Index() {
         const newShuffle = shuffleArray(pool);
         setShuffledAlbums(newShuffle);
         setAlbumIndex(0);
-        console.log(JSON.stringify(shuffledAlbums, null, 2));
+        //console.log(JSON.stringify(shuffledAlbums, null, 2));
     };
 
     const sendToDb = async () => {
@@ -391,6 +403,39 @@ export default function Index() {
         setGenres(null);
     };
 
+    const removeAlbum = async (albumToRemove: {
+        title: string;
+        artist: string;
+        url: string;
+        sides: number;
+        genres: string[],
+        sideLetter?: string;
+    }) => {
+        let idToRemove: string | null = null;
+        setAlbums(prev => {
+            const updated = prev.filter(item => {
+                const match = item.title === albumToRemove.title && item.artist === albumToRemove.artist
+                if(match) {
+                    idToRemove = item.$id;
+                    return false;
+                }
+                return true;
+            });
+            return updated;
+        })
+        if (idToRemove !== null) {
+            try {
+                await db.deleteDocument(
+                  process.env.EXPO_PUBLIC_APPWRITE_DATABASE_ID!,
+                  owner!,
+                  idToRemove
+                )
+            } catch (err){
+                console.log("Error when trying to remove album, ", err)
+            }
+        }
+    }
+
     const handleSetSides = (input: string) => {
         const parsed = parseInt(input, 10);
         setSides(isNaN(parsed) ? null : parsed);
@@ -409,6 +454,7 @@ export default function Index() {
                 console.log("Failed to save last library", err));
         }
     }
+
     if(!isReady) {
         return (
           <LottieView
@@ -595,6 +641,7 @@ export default function Index() {
           visible={library}
           albums={shuffledAlbums}
           onUpdateGenres={handleUpdateGenres}
+          onRemoveAlbum={removeAlbum}
           onClose={() => {setLibrary(false)}}
         />
     </View>

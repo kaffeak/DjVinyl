@@ -1,21 +1,23 @@
-import {Modal, Pressable, ScrollView, Text, View, Image, Dimensions, TouchableOpacity} from "react-native";
+import {Modal, Pressable, ScrollView, Text, View, Image, Dimensions, TouchableOpacity, Alert} from "react-native";
 import * as Haptics from "expo-haptics";
 import {LinearGradient} from "expo-linear-gradient";
 import {useState} from "react";
 import AlbumInfoModal from "@/app/albumInfoModal";
 
+export interface Album {
+  title: string;
+  artist: string;
+  url: string;
+  sides: number;
+  genres: string[],
+  sideLetter?: string;
+}
 type libraryProps = {
-  albums: {
-    title: string;
-    artist: string;
-    url: string;
-    sides: number;
-    genres: string[],
-    sideLetter?: string;
-  }[],
+  albums: Album[],
   onClose: () => void;
   visible: boolean;
   onUpdateGenres: (albumTitle: string, albumArtist: string, genres: string[]) => void;
+  onRemoveAlbum: (album: Album) => void;
 }
 
 export default function ShowLibrary({
@@ -23,32 +25,12 @@ export default function ShowLibrary({
   onClose,
   visible,
   onUpdateGenres,
+  onRemoveAlbum,
   }: libraryProps) {
-  const [selected, setSelected] = useState<{
-    title: string;
-    artist: string;
-    url: string;
-    sides: number;
-    genres: string[],
-    sideLetter?: string;
-  } | null>(null);
+  const [selected, setSelected] = useState<Album | null>(null);
   const itemSize = ((Dimensions.get("window").width) - 48) / 3;
-  const flattened: {
-    title: string;
-    artist: string;
-    url: string;
-    sides: number;
-    genres: string[],
-    sideLetter?: string;
-  }[] = Object.values(
-    [...albums].reduce<Record<string, {
-      title: string;
-      artist: string;
-      url: string;
-      sides: number;
-      genres: string[],
-      sideLetter?: string;
-    }>>((acc, a) => (acc[a.title.toLowerCase()] ??= a, acc), {})
+  const flattened: Album[] = Object.values(
+    [...albums].reduce<Record<string, Album>>((acc, a) => (acc[a.title.toLowerCase()] ??= a, acc), {})
   );
   const sortedAlbums = flattened.sort((a,b) => {
     const artistCompare = a.artist.trim().localeCompare(b.artist.trim(), undefined, {
@@ -59,6 +41,30 @@ export default function ShowLibrary({
     sensitivity: "base",
     });
   });
+
+  const confirmRemoveAlbum = (album: Album) => {
+    if(!album) return;
+    Alert.alert(
+      "Remove album?",
+        `"${album.title}" by ${album.artist} will be removed from your library.`,
+      [
+        {
+          text: "Cancel",
+          style: "cancel",
+        },
+        {
+          text: "Remove",
+          style: "destructive",
+          onPress: () => {
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+            setSelected(null);
+            onRemoveAlbum(album);
+          }
+        }
+      ],
+      {cancelable: true}
+      );
+  }
 
   return (
     <Modal visible={visible} transparent animationType="slide">
@@ -96,6 +102,9 @@ export default function ShowLibrary({
               if(!selected) return;
               sortedAlbums[sortedAlbums.indexOf(selected)].genres = newGenres;
               onUpdateGenres(selected.title, selected.artist, newGenres);
+            }}
+            onRemoveAlbum={(album) => {
+              confirmRemoveAlbum(album);
             }}
           />
           <View className="absolute bottom-0 mb-16 left-0 right-0 items-center p-4 ">

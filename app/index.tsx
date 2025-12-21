@@ -61,16 +61,6 @@ export default function Index() {
     useEffect(() => {
         (async () => {
             try {
-                const response = await db.listTables()
-
-            } catch (err) {
-                console.log("Failed to load last library", err);
-            } finally {
-                setIsReady(true);
-            }
-        })();
-        (async () => {
-            try {
                 const saved = await AsyncStorage.getItem(LAST_LIBRARY_KEY);
                 if (saved === process.env.EXPO_PUBLIC_APPWRITE_LIBRARY_MATS_ID && saved !== null)
                     setOwner(saved);

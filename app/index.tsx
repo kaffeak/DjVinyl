@@ -38,7 +38,7 @@ export default function Index() {
     const [title, setTitle] = useState("");
     const [artist, setArtist] = useState("");
     const [sides, setSides] = useState<number | null>(null);
-    const [genres, setGenres] = useState<string[] | null>(null);
+    const [genres, setGenres] = useState("");
 
     const [albums, setAlbums] = useState<any[]>([]);
     const [shuffledAlbums, setShuffledAlbums] = useState<any[]>([]);
@@ -206,8 +206,8 @@ export default function Index() {
             const frontImage = images.find((img) => img.front) ?? images[0];
 
             const imageUrl =
-              normalizeUrl(frontImage.thumbnails?.["1200"]) ||
               normalizeUrl(frontImage.thumbnails?.["500"]) ||
+              normalizeUrl(frontImage.thumbnails?.["1200"]) ||
               normalizeUrl(frontImage.image);
 
             console.log("Using cover art URL:", imageUrl);
@@ -310,7 +310,7 @@ export default function Index() {
         //console.log(JSON.stringify(shuffledAlbums, null, 2));
     };
 
-    const sendToDb = async () => {
+    const sendToDb = async (genreList: string[]) => {
         const newId = ID.unique();
         try {
             const response = await db.createDocument(
@@ -321,7 +321,7 @@ export default function Index() {
                   title,
                   sides,
                   artist,
-                  genres
+                  genreList
               }
             );
             console.log("Created doc:", response);
@@ -384,13 +384,14 @@ export default function Index() {
     }
 
     const addAlbum = async () => {
-        const response = await sendToDb();
+        const genreList = genres.toLowerCase().split(",");
+        const response = await sendToDb(genreList);
         setAlbums(prev => [...prev, response]);
-        console.log("Adding album:", {title, artist, sides, genres});
+        console.log("Adding album:", {title, artist, sides, genreList});
         setTitle("");
         setArtist("");
         setSides(null);
-        setGenres(null);
+        setGenres("");
     };
 
     const removeAlbum = async (albumToRemove: {
@@ -429,11 +430,6 @@ export default function Index() {
     const handleSetSides = (input: string) => {
         const parsed = parseInt(input, 10);
         setSides(isNaN(parsed) ? null : parsed);
-    }
-
-    const setGenresFunc = (input: string) => {
-        const genreList = input.toLowerCase().split(",");
-        setGenres(genreList);
     }
 
     const changeLibrary = () => {
@@ -585,8 +581,8 @@ export default function Index() {
                         className="border border-gray-300 rounded-lg p-3 mb-3"
                     />
                     <TextInput
-                      value={genres !== null ? genres.toString() : ""}
-                      onChangeText={setGenresFunc}
+                      value={genres}
+                      onChangeText={setGenres}
                       placeholder="Genres (separated by , )"
                       placeholderTextColor="#9CA3AF"
                       className="border border-gray-300 rounded-lg p-3 mb-3"

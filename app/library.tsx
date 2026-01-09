@@ -1,8 +1,21 @@
-import {Modal, Pressable, ScrollView, Text, View, Image, Dimensions, TouchableOpacity, Alert} from "react-native";
+import {
+  Modal,
+  Pressable,
+  ScrollView,
+  Text,
+  View,
+  Dimensions,
+  TouchableOpacity,
+  Alert,
+  FlatList
+} from "react-native";
+import { Image } from "expo-image";
 import * as Haptics from "expo-haptics";
 import {LinearGradient} from "expo-linear-gradient";
-import {useState} from "react";
+import {useCallback, useState} from "react";
 import AlbumInfoModal from "@/app/albumInfoModal";
+import AlbumCover from "@/app/albumCover";
+import AlbumGridItem from "@/app/albumGridItem";
 
 export interface Album {
   title: string;
@@ -66,6 +79,10 @@ export default function ShowLibrary({
       );
   }
 
+  const handleSelect = useCallback((album: Album) => {
+    setSelected(album);
+  }, []);
+
   return (
     <Modal visible={visible} transparent animationType="slide">
       <LinearGradient
@@ -75,7 +92,27 @@ export default function ShowLibrary({
         style={{ flex: 1 }}
       >
         <View className="flex-1 mt-10">
-          <ScrollView contentContainerStyle={{ paddingBottom: 120 }}>
+          {
+          <FlatList
+            data={sortedAlbums}
+            keyExtractor={(item) => `${item.artist}-${item.title}`}
+            numColumns={3}
+            contentContainerStyle={{ paddingBottom: 120, paddingHorizontal: 12}}
+            columnWrapperStyle={{ justifyContent: "space-between"}}
+            initialNumToRender={12}
+            maxToRenderPerBatch={12}
+            windowSize={7}
+            removeClippedSubviews={true}
+            renderItem={({item}) => (
+              <AlbumGridItem
+                album={item}
+                itemSize={itemSize}
+                onSelect={handleSelect}
+              />
+            )}
+          />
+          }
+          {/*<ScrollView contentContainerStyle={{paddingBottom: 120}}>
             <View className="flex flex-row flex-wrap">
               {sortedAlbums.map((album, index) => (
                 <View key={index} style={{width: itemSize, marginLeft: 12, marginBottom: 12}}>
@@ -84,16 +121,17 @@ export default function ShowLibrary({
                     setSelected(album)
                   }} activeOpacity={0.85}>
                     <Image
-                      source={{ uri: album?.url ? album.url : "https://placehold.co/250x250?text=No+Cover"}}
-                      className="w-full aspect-square rounded-xl"
-                      resizeMode="cover"
+                      source={album.url}
+                      cachePolicy="memory-disk"
+                      transition={150}
+                      style={{ width: "100%", aspectRatio: 1, borderRadius: 12 }}
                     />
                     <Text className="text-white text-center mt-1">{album.artist}</Text>
                   </TouchableOpacity>
                 </View>
               ))}
             </View>
-          </ScrollView>
+          </ScrollView>*/}
           <AlbumInfoModal
             visible={!!selected}
             album={selected}

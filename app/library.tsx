@@ -12,7 +12,7 @@ import {
 import { Image } from "expo-image";
 import * as Haptics from "expo-haptics";
 import {LinearGradient} from "expo-linear-gradient";
-import {useCallback, useState} from "react";
+import {useCallback, useEffect, useState} from "react";
 import AlbumInfoModal from "@/app/albumInfoModal";
 import AlbumCover from "@/app/albumCover";
 import AlbumGridItem from "@/app/albumGridItem";
@@ -29,16 +29,16 @@ type libraryProps = {
   albums: Album[],
   onClose: () => void;
   visible: boolean;
-  onUpdateGenres: (albumTitle: string, albumArtist: string, genres: string[]) => void;
-  onRemoveAlbum: (album: Album) => void;
+  onUpdateAlbumGenres: (albumTitle: string, albumArtist: string, genres: string[]) => void;
+  onRemoveAlbumL: (album: Album) => void;
 }
 
 export default function ShowLibrary({
   albums,
   onClose,
   visible,
-  onUpdateGenres,
-  onRemoveAlbum,
+  onUpdateAlbumGenres,
+  onRemoveAlbumL,
   }: libraryProps) {
   const [selected, setSelected] = useState<Album | null>(null);
   const itemSize = ((Dimensions.get("window").width) - 48) / 3;
@@ -54,6 +54,18 @@ export default function ShowLibrary({
     sensitivity: "base",
     });
   });
+
+  useEffect(() => {
+    if (!selected) return;
+
+    const updated = albums.find(
+      a => a.title === selected.title && a.artist === selected.artist
+    );
+
+    if (updated) {
+      setSelected(updated);
+    }
+  }, [albums]);
 
   const confirmRemoveAlbum = (album: Album) => {
     if(!album) return;
@@ -71,7 +83,7 @@ export default function ShowLibrary({
           onPress: () => {
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
             setSelected(null);
-            onRemoveAlbum(album);
+            onRemoveAlbumL(album);
           }
         }
       ],
@@ -98,48 +110,29 @@ export default function ShowLibrary({
             keyExtractor={(item) => `${item.artist}-${item.title}`}
             numColumns={3}
             contentContainerStyle={{ paddingBottom: 120, paddingHorizontal: 12}}
-            columnWrapperStyle={{ justifyContent: "space-between"}}
+            columnWrapperStyle={{ justifyContent: "flex-start"}}
             initialNumToRender={12}
             maxToRenderPerBatch={12}
             windowSize={7}
             removeClippedSubviews={true}
-            renderItem={({item}) => (
+            renderItem={({item, index}) => (
               <AlbumGridItem
                 album={item}
                 itemSize={itemSize}
                 onSelect={handleSelect}
+                index={index}
+                numColumns={3}
               />
             )}
           />
           }
-          {/*<ScrollView contentContainerStyle={{paddingBottom: 120}}>
-            <View className="flex flex-row flex-wrap">
-              {sortedAlbums.map((album, index) => (
-                <View key={index} style={{width: itemSize, marginLeft: 12, marginBottom: 12}}>
-                  <TouchableOpacity onPress={() => {
-                    Haptics.selectionAsync();
-                    setSelected(album)
-                  }} activeOpacity={0.85}>
-                    <Image
-                      source={album.url}
-                      cachePolicy="memory-disk"
-                      transition={150}
-                      style={{ width: "100%", aspectRatio: 1, borderRadius: 12 }}
-                    />
-                    <Text className="text-white text-center mt-1">{album.artist}</Text>
-                  </TouchableOpacity>
-                </View>
-              ))}
-            </View>
-          </ScrollView>*/}
           <AlbumInfoModal
             visible={!!selected}
             album={selected}
             onClose={() => setSelected(null)}
             onUpdateGenres={(newGenres) => {
               if(!selected) return;
-              sortedAlbums[sortedAlbums.indexOf(selected)].genres = newGenres;
-              onUpdateGenres(selected.title, selected.artist, newGenres);
+              onUpdateAlbumGenres(selected.title, selected.artist, newGenres);
             }}
             onRemoveAlbum={(album) => {
               confirmRemoveAlbum(album);

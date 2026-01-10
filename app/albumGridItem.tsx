@@ -8,16 +8,19 @@ type Props = {
   album: Album;
   itemSize: number;
   onSelect: (album: Album) => void;
+  index: number;
+  numColumns: number;
 }
 
-function AlbumGridItem({album, itemSize, onSelect}: Props) {
+function AlbumGridItem({album, itemSize, onSelect, index, numColumns}: Props) {
+  const isLastColumn = (index + 1) % numColumns === 0;
   const handlePress = useCallback(() => {
     Haptics.selectionAsync();
     onSelect(album);
   }, [album, onSelect]);
 
   return (
-    <View style={{ width: itemSize, marginBottom: 12}}>
+    <View style={{ width: itemSize, marginBottom: 12, marginRight: isLastColumn ? 0 : 12,}}>
       <TouchableOpacity
         activeOpacity={0.85}
         onPress={handlePress}

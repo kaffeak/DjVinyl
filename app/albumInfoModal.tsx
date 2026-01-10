@@ -61,15 +61,15 @@ export default function AlbumInfoModal({
   const [bottom, setBottom] = useState<string>("#0f172a")
   const [textColor, setTextColor] = useState<string>(invert("#1e293b"))
   const anim = useRef(new Animated.Value(0)).current;
-  const [localAlbum, setLocalAlbum] = useState<Album | null>(album || null);
+  //const [localAlbum, setLocalAlbum] = useState<Album | null>(album || null);
 
   const [editGenres, setEditGenres] = useState<boolean>(false);
   const [newGenre, setNewGenre] = useState<string>("");
   // anim: 0 = hidden, 1 = shown
 
-  useEffect(() => {
+  /*useEffect(() => {
     setLocalAlbum(album);
-  }, [album]);
+  }, [album]);*/
 
   useEffect(() => {
     if(!visible) {
@@ -88,16 +88,16 @@ export default function AlbumInfoModal({
   }, [visible, anim]);
 
   useEffect(() => {
-    if(!localAlbum?.url) return;
+    if(!album?.url) return;
     (async () => {
-      const returnColors = await getColors(localAlbum.url, {
+      const returnColors = await getColors(album.url, {
         fallback: '#121212',
         cache: true,
-        key: localAlbum.url,
+        key: album.url,
       })
       setColors(returnColors)
     })();
-  }, [localAlbum]);
+  }, [album]);
 
   useEffect(() => {
     if (!colors) return;
@@ -120,35 +120,34 @@ export default function AlbumInfoModal({
   }, [colors]);
 
   const handleAddGenres = () => {
-    if(!localAlbum) return;
+    if(!album) return;
     const trimmed = newGenre.trim();
     if(!trimmed) return;
-    const normalized = trimmed.toLowerCase();
-    const updated = Array.from(new Set([...(localAlbum.genres || []), normalized]));
-    setLocalAlbum(prev =>
-        prev ? {...prev, genres: updated} : prev
-    );
+
+    const updated = Array.from(new Set([...(album.genres || []), trimmed.toLowerCase()]));
+
     onUpdateGenres?.(updated);
     setNewGenre("");
   }
 
   const handleRemoveGenre = (genre: string) => {
-    if(!localAlbum) return;
-    const updated = localAlbum.genres.filter(g => g !== genre);
-    setLocalAlbum(prev =>
-      prev ? { ...prev, genres: updated } : prev)
+    if(!album) return;
+    const updated = album.genres.filter(g => g !== genre);
+
     onUpdateGenres?.(updated);
   }
 
   const handleRemoveAlbum = (album : Album) => {
-    if(!localAlbum) return;
+    if(!album) return;
     onRemoveAlbum?.(album);
   }
 
-  if (!localAlbum) return null;
+  if (!album) return null;
 
   const translateY = anim.interpolate({ inputRange: [0, 1], outputRange: [40, 0] });
   const scale = anim.interpolate({ inputRange: [0, 1], outputRange: [0.98, 1] });
+
+  if (!album) return null;
 
   return (
     <Modal visible={visible} transparent animationType="none" onRequestClose={onClose}>
@@ -171,13 +170,13 @@ export default function AlbumInfoModal({
               },
             ]}
           >
-            <Image source={{ uri: localAlbum.url }} style={[styles.image, { width: cardSize, height: cardSize }]} resizeMode="cover" />
+            <Image source={{ uri: album.url }} style={[styles.image, { width: cardSize, height: cardSize }]} resizeMode="cover" />
             {editGenres && (
               <Pressable
                 style={styles.minusBadgeAlbum}
                 onPress={() => {
                   Haptics.selectionAsync();
-                  handleRemoveAlbum(localAlbum);
+                  handleRemoveAlbum(album);
                 }}
               >
                 <View >
@@ -189,15 +188,15 @@ export default function AlbumInfoModal({
               colors={[top, bottom]}
               style={[styles.info]}
             >
-              <Text style={[styles.title, {color: textColor}]}>Title: {localAlbum.title}</Text>
-              <Text style={[styles.artist, {color: textColor}]}>Artist: {localAlbum.artist}</Text>
+              <Text style={[styles.title, {color: textColor}]}>Title: {album.title}</Text>
+              <Text style={[styles.artist, {color: textColor}]}>Artist: {album.artist}</Text>
               <View style={styles.metaRow}>
-                <Text style={[styles.metaLabel, {color: textColor}]}>Sides: {localAlbum.sides}</Text>
+                <Text style={[styles.metaLabel, {color: textColor}]}>Sides: {album.sides}</Text>
               </View>
-              {localAlbum.genres && (
+              {Array.isArray(album.genres) && (
                 <>
                   <View style={styles.genresWrap}>
-                    {localAlbum.genres.map((g, i) => (
+                    {album.genres.map((g, i) => (
                       <Pressable
                         key={`${g}-${i}`}
                         disabled={!editGenres}

@@ -18,9 +18,6 @@ const client = new Client()
 export const db = new Databases(client);
 const LAST_LIBRARY_KEY = "lastLibrary";
 
-//database id: 68ada3e1001da2d5fb66
-//collection id: 68ada605003cab076573
-
 const shuffleArray = <T,>(array: T[]): T[] => {
     const copy = [...array];
     for (let i = copy.length - 1; i > 0; i--) {
@@ -38,7 +35,8 @@ export default function Index() {
     const [title, setTitle] = useState("");
     const [artist, setArtist] = useState("");
     const [sides, setSides] = useState<number | null>(null);
-    const [genres, setGenres] = useState("");
+    const [genres, setGenres] = useState<string[] | null>(null);
+    const [newGenres, setNewGenres] = useState("");
 
     const [albums, setAlbums] = useState<any[]>([]);
     const [shuffledAlbums, setShuffledAlbums] = useState<any[]>([]);
@@ -321,7 +319,7 @@ export default function Index() {
                   title,
                   sides,
                   artist,
-                  genreList
+                  genres: genreList,
               }
             );
             console.log("Created doc:", response);
@@ -384,14 +382,14 @@ export default function Index() {
     }
 
     const addAlbum = async () => {
-        const genreList = genres.toLowerCase().split(",");
+        const genreList = newGenres.toLowerCase().split(",");
         const response = await sendToDb(genreList);
         setAlbums(prev => [...prev, response]);
         console.log("Adding album:", {title, artist, sides, genreList});
         setTitle("");
         setArtist("");
         setSides(null);
-        setGenres("");
+        setNewGenres("");
     };
 
     const removeAlbum = async (albumToRemove: {
@@ -581,8 +579,8 @@ export default function Index() {
                         className="border border-gray-300 rounded-lg p-3 mb-3"
                     />
                     <TextInput
-                      value={genres}
-                      onChangeText={setGenres}
+                      value={newGenres}
+                      onChangeText={setNewGenres}
                       placeholder="Genres (separated by , )"
                       placeholderTextColor="#9CA3AF"
                       className="border border-gray-300 rounded-lg p-3 mb-3"
@@ -626,8 +624,8 @@ export default function Index() {
         <ShowLibrary
           visible={library}
           albums={shuffledAlbums}
-          onUpdateGenres={handleUpdateGenres}
-          onRemoveAlbum={removeAlbum}
+          onUpdateAlbumGenres={handleUpdateGenres}
+          onRemoveAlbumL={removeAlbum}
           onClose={() => {setLibrary(false)}}
         />
     </View>

@@ -7,12 +7,12 @@ import {
   Dimensions,
   TouchableOpacity,
   Alert,
-  FlatList
+  FlatList, TextInput
 } from "react-native";
 import { Image } from "expo-image";
 import * as Haptics from "expo-haptics";
 import {LinearGradient} from "expo-linear-gradient";
-import {useCallback, useEffect, useState} from "react";
+import {useCallback, useEffect, useMemo, useState} from "react";
 import AlbumInfoModal from "@/app/albumInfoModal";
 import AlbumCover from "@/app/albumCover";
 import AlbumGridItem from "@/app/albumGridItem";
@@ -41,6 +41,7 @@ export default function ShowLibrary({
   onRemoveAlbumL,
   }: libraryProps) {
   const [selected, setSelected] = useState<Album | null>(null);
+  const [searchTerm, setSearchTerm] = useState("");
   const itemSize = ((Dimensions.get("window").width) - 48) / 3;
   const flattened: Album[] = Object.values(
     [...albums].reduce<Record<string, Album>>((acc, a) => (acc[a.title.toLowerCase()] ??= a, acc), {})
@@ -54,6 +55,13 @@ export default function ShowLibrary({
     sensitivity: "base",
     });
   });
+
+  const filteredAlbums = useMemo(() => {
+    return sortedAlbums.filter(item =>
+      item.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      item.artist.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+  }, [searchTerm, sortedAlbums]);
 
   useEffect(() => {
     if (!selected) return;
@@ -104,9 +112,16 @@ export default function ShowLibrary({
         style={{ flex: 1 }}
       >
         <View className="flex-1 mt-10">
+          <TextInput
+            value={searchTerm}
+            onChangeText={setSearchTerm}
+            placeholder="Search"
+            placeholderTextColor="#9CA3AF"
+            className="border border-2 border-gray-300 rounded-full p-2 m-4 text-white pl-5"
+          />
           {
           <FlatList
-            data={sortedAlbums}
+            data={filteredAlbums}
             keyExtractor={(item) => `${item.artist}-${item.title}`}
             numColumns={3}
             contentContainerStyle={{ paddingBottom: 120, paddingHorizontal: 12}}

@@ -1,5 +1,5 @@
 import {Image, StyleSheet, Text, View} from "react-native";
-import React, {useState} from "react";
+import React, {useEffect, useState} from "react";
 import LottieView from "lottie-react-native";
 import {Gesture, GestureDetector} from "react-native-gesture-handler";
 import Animated, {useAnimatedStyle, useSharedValue, withDecay, withSpring, withTiming} from "react-native-reanimated";
@@ -24,6 +24,7 @@ const CardItem = ({index, album, shuffleCards}: Props) => {
   const transformY = useSharedValue(0);
   const rotation = useSharedValue(0);
   const opacity = useSharedValue(1);
+
   const decayConfig = { rubberBandEffect: false, clamp: [-300, 300] as [number, number] };
   const resetFunction = () => {
     "worklet";
@@ -57,9 +58,13 @@ const CardItem = ({index, album, shuffleCards}: Props) => {
     }
 
   });
-
+  useEffect(() => {
+    rotation.value = withSpring(
+      index === 0 ? 0 : index % 2 ? 10 : index % 3 === 1 ? -10 : index % 4 === 1 ? 5 : -5,
+      {stiffness: 1000, damping: 60,}
+    )
+  }, [index]);
   const animatedStyle = useAnimatedStyle(() => {
-    rotation.value = withSpring(index === 0 ? 0 : index % 2 ? 10 : index % 3 === 1 ? -10 : index % 4 === 1 ? 5 : -5, {stiffness: 1000, damping: 60,});
     return {
       opacity: opacity.value,
       zIndex: 1000-index,
@@ -71,29 +76,11 @@ const CardItem = ({index, album, shuffleCards}: Props) => {
     };
   })
 
-  function getRotation(index: number) {
-    switch (index % 5) {
-      case 0: return "0deg";
-      case 1: return "10deg";
-      case 2: return "-10deg";
-      case 3: return "5deg";
-      case 4: return "-5deg";
-      default: return "0deg";
-    }
-  }
   return (
     <GestureDetector gesture={gesture}>
       <Animated.View
         style={[
           styles.container,
-          {
-            zIndex: 1000-index,
-            transform:[
-              {rotate: getRotation(index)}
-            ],
-            transitionDuration: "300ms",
-            transitionTimingFunction: "ease-in-out",
-          },
           animatedStyle,
         ]}>
           {isCoverLoading ? (

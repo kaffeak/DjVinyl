@@ -16,6 +16,7 @@ import {useCallback, useEffect, useMemo, useState} from "react";
 import AlbumInfoModal from "@/app/albumInfoModal";
 import AlbumCover from "@/app/albumCover";
 import AlbumGridItem from "@/app/albumGridItem";
+import {Ionicons} from "@expo/vector-icons";
 
 export interface Album {
   title: string;
@@ -111,14 +112,23 @@ export default function ShowLibrary({
         end={[0, 1]}
         style={{ flex: 1 }}
       >
-        <View className="flex-1 mt-10">
+        <View className="mt-12">
+          <View className="flex-row items-center border-2 border-gray-300 rounded-full py-1 mb-4 mx-4 px-5">
           <TextInput
             value={searchTerm}
             onChangeText={setSearchTerm}
-            placeholder="Search"
+            placeholder="Search albums or artists"
             placeholderTextColor="#9CA3AF"
-            className="border border-2 border-gray-300 rounded-full p-2 m-4 text-white pl-5"
+            className="flex-1 text-white text-base"
           />
+            {searchTerm === "" ? (
+              <Ionicons name="search-outline" size={22} color="#9CA3AF"/>
+            ) : (
+              <Pressable onPress={() => setSearchTerm("")}>
+                <Ionicons name="close-outline" size={22} color="#EF4444"/>
+              </Pressable>
+            )}
+          </View>
           {
           <FlatList
             data={filteredAlbums}

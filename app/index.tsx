@@ -10,6 +10,8 @@ import LoadingScreen from "@/app/loadingScreen";
 import LottieView from "lottie-react-native";
 import ShowLibrary from "@/app/library";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import AlbumCards from "@/app/AlbumCards";
+import {GestureHandlerRootView} from "react-native-gesture-handler";
 
 const client = new Client()
     .setProject(process.env.EXPO_PUBLIC_APPWRITE_PROJECT_ID ?? "")
@@ -454,6 +456,7 @@ export default function Index() {
         return <LoadingScreen />;
     }
   return (
+<GestureHandlerRootView>
   <LinearGradient
           colors={["#1e293b", "#0f172a"]} // slate/dark blue
           start={[0, 0]}
@@ -488,8 +491,12 @@ export default function Index() {
                 <Ionicons name="settings-outline" size={28} color="white"/>
             </Pressable>
         </View>
-
+        {/*Here starts the ablum content*/}
         <View className="flex-1 items-center justify-center">
+            <AlbumCards albums={shuffledAlbums} reShuffleAlbums={reshuffleAlbums}/>
+        </View>
+
+        {/*<View className="flex-1 items-center justify-center">
             <View style={{
                 width: 250,
                 height: 250,
@@ -498,27 +505,36 @@ export default function Index() {
                 position: "relative",
             }}>
                 {isCoverLoading ? (
-                    <LottieView
-                        source={require("../assets/images/turntable.json")}
-                        autoPlay
-                        loop
-                        style={{width: 180, height: 180, position: "absolute"}}
-                    />
+                  <LottieView
+                    source={require("../assets/images/turntable.json")}
+                    autoPlay
+                    loop
+                    style={{width: 180, height: 180, position: "absolute"}}
+                  />
                 ) : null}
                 <Image
-                    source={{ uri: currentAlbum?.coverUrl ? currentAlbum.coverUrl : "https://placehold.co/250x250?text=No+Cover", width: 250, height: 250}}
-                    style={{resizeMode: "contain", borderRadius: 16, position: "absolute", opacity: isCoverLoading ? 0 : 1}}
-                    onLoadStart={() => setIsCoverLoading(true)}
-                    onLoadEnd={() =>  setIsCoverLoading(false)}
+                  source={{
+                      uri: currentAlbum?.coverUrl ? currentAlbum.coverUrl : "https://placehold.co/250x250?text=No+Cover",
+                      width: 250,
+                      height: 250
+                  }}
+                  style={{
+                      resizeMode: "contain",
+                      borderRadius: 16,
+                      position: "absolute",
+                      opacity: isCoverLoading ? 0 : 1
+                  }}
+                  onLoadStart={() => setIsCoverLoading(true)}
+                  onLoadEnd={() => setIsCoverLoading(false)}
                 />
             </View>
             <Text className="mt-4 font-bold text-lg text-gray-200 text-center">
                 {currentAlbum ? `${currentAlbum.title} — ${currentAlbum.artist} ${currentAlbum.sideLetter ? ` (Side ${currentAlbum.sideLetter})` : ""}` : "No album selected"}
             </Text>
             <View className="mt-6">
-                <ShuffleButton callParentFunction={shuffleAlbums} />
+                <ShuffleButton callParentFunction={shuffleAlbums}/>
             </View>
-        </View>
+        </View>*/}
 
         <View className="items-center mb-16">
             <Pressable
@@ -630,5 +646,6 @@ export default function Index() {
         />
     </View>
   </LinearGradient>
+</GestureHandlerRootView>
   )
 }

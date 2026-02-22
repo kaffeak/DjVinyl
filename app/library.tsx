@@ -114,13 +114,13 @@ export default function ShowLibrary({
       >
         <View className="mt-12">
           <View className="flex-row items-center border-2 border-gray-300 rounded-full py-1 mb-4 mx-4 px-5">
-          <TextInput
-            value={searchTerm}
-            onChangeText={setSearchTerm}
-            placeholder="Search albums or artists"
-            placeholderTextColor="#9CA3AF"
-            className="flex-1 text-white text-base"
-          />
+            <TextInput
+              value={searchTerm}
+              onChangeText={setSearchTerm}
+              placeholder="Search for albums or artists"
+              placeholderTextColor="#9CA3AF"
+              className="flex-1 text-white text-base"
+            />
             {searchTerm === "" ? (
               <Ionicons name="search-outline" size={22} color="#9CA3AF"/>
             ) : (
@@ -129,7 +129,6 @@ export default function ShowLibrary({
               </Pressable>
             )}
           </View>
-          {
           <FlatList
             data={filteredAlbums}
             keyExtractor={(item) => `${item.artist}-${item.title}`}
@@ -150,7 +149,6 @@ export default function ShowLibrary({
               />
             )}
           />
-          }
           <AlbumInfoModal
             visible={!!selected}
             album={selected}
@@ -163,7 +161,7 @@ export default function ShowLibrary({
               confirmRemoveAlbum(album);
             }}
           />
-          <View className="absolute bottom-0 mb-16 left-0 right-0 items-center p-4 ">
+          <View className="absolute bottom-0 mb-36 left-0 right-0 items-center p-4 ">
             <Pressable
               onPress={() => {
                 Haptics.selectionAsync();

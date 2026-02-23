@@ -4,6 +4,7 @@ import LottieView from "lottie-react-native";
 import {Gesture, GestureDetector} from "react-native-gesture-handler";
 import Animated, {useAnimatedStyle, useSharedValue, withDecay, withSpring, withTiming} from "react-native-reanimated";
 import {scheduleOnRN} from "react-native-worklets";
+import {random} from "nanoid";
 export interface Album {
   title: string;
   artist: string;
@@ -62,7 +63,7 @@ const CardItem = ({index, album, shuffleCards}: Props) => {
   });
   useEffect(() => {
     rotation.value = withSpring(
-      index === 0 ? 0 : index % 2 ? 10 : index % 3 === 1 ? -10 : index % 4 === 1 ? 5 : -5,
+      index === 0 ? 0 : index === 5 ? 0 : ((Math.random() * 5 * index + 5) * (index % 2 ? 1 : -1)),
       {stiffness: 1000, damping: 60,}
     )
   }, [index]);

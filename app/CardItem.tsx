@@ -33,8 +33,10 @@ const CardItem = ({index, album, shuffleCards}: Props) => {
   }
 
   const gesture = Gesture.Pan().onUpdate((e) => {
-    transformX.value = e.translationX;
-    transformY.value = e.translationY;
+    if(index < 2) {
+      transformX.value = e.translationX;
+      transformY.value = e.translationY;
+    }
   }).onEnd(() => {
     const isLeftSwipe = transformX.value < -100;
     const isRightSwipe = transformX.value > 100;

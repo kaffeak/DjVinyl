@@ -33,7 +33,7 @@ const AlbumCards = ({albums, reShuffleAlbums}: Props) => {
     <View style={styles.container}>
       <View style={{width: 250, height: 250, position: "relative"}}>
         {cards.map((album, index) => {
-          if(index < 5) return<CardItem key={album.url + album.sideLetter} album={album} index={index} shuffleCards={shuffleCards} />;})}
+          if(index < 6) return<CardItem key={album.url + album.sideLetter} album={album} index={index} shuffleCards={shuffleCards} />;})}
       </View>
       <View style={styles.textContainer}>
         {cards.length > 0 && (

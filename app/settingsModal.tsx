@@ -25,7 +25,7 @@ export default function SettingsModal({
       .filter(([_, count]) => count > 1)
       .sort((a, b) => b[1] - a[1]);
     return (
-        <Modal visible={visible} transparent animationType="slide">
+        <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
             <View className="flex-1 justify-center items-center bg-black/50">
                 <View
                     className="bg-white rounded-2xl p-6 shadow-lg"

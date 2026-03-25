@@ -66,6 +66,7 @@ export default function AlbumInfoModal({
   const [bottom, setBottom] = useState<string>("#0f172a")
   const [textColor, setTextColor] = useState<string>(invert("#1e293b"))
   const anim = useRef(new Animated.Value(0)).current;
+  const [currentPage, setCurrentPage] = useState(0);
 
   const pagerRef = useRef<PagerView>(null);
 
@@ -239,6 +240,9 @@ export default function AlbumInfoModal({
                 ref={pagerRef}
                 style={{flex: 1}}
                 initialPage={0}
+                onPageSelected={(e) => {
+                  setCurrentPage(e.nativeEvent.position);
+                }}
               >
                 <View className="w-full flex-1" key={1}>
                   <ScrollView
@@ -366,6 +370,26 @@ export default function AlbumInfoModal({
                   </ScrollView>
                 </View>
               </PagerView>
+              <View style={{ alignItems: "center", marginTop: 8 }}>
+                <View className="flex-row items-center justify-center gap-2">
+                  {[0, 1].map((i) => {
+                    const isActive = currentPage === i;
+
+                    return (
+                      <View
+                        key={i}
+                        style={{
+                          width: isActive ? 10 : 6,
+                          height: isActive ? 10 : 6,
+                          borderRadius: 999,
+                          backgroundColor: invert(bottom),
+                          opacity: isActive ? 1 : 0.4,
+                        }}
+                      />
+                    );
+                  })}
+                </View>
+              </View>
             </LinearGradient>
           </Animated.View>
         </View>

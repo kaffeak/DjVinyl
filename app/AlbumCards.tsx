@@ -15,10 +15,14 @@ export interface Album {
 type Props = {
   albums: Album[],
   reShuffleAlbums: () => void,
+  queueMode: boolean,
+  setShuffledAlbums: (albums: Album[]) => void,
+  cards: Album[],
+  setCards: React.Dispatch<React.SetStateAction<Album[]>>;
 }
 
-const AlbumCards = ({albums, reShuffleAlbums}: Props) => {
-  const [cards, setCards] = React.useState<Album[]>(albums);
+const AlbumCards = ({albums, reShuffleAlbums, queueMode, setShuffledAlbums, cards, setCards}: Props) => {
+
   useEffect(() => {
     setCards(albums);
   }, [albums]);
@@ -27,23 +31,34 @@ const AlbumCards = ({albums, reShuffleAlbums}: Props) => {
     const firstCard = updatedCards.shift();
     if (firstCard) {
       setCards(updatedCards);
-      if(updatedCards.length === 0) scheduleOnRN(reShuffleAlbums);
+      if(updatedCards.length === 0) {
+        if (queueMode) setShuffledAlbums([]);
+        else scheduleOnRN(reShuffleAlbums);
+      }
     }
   }
   return (
     <View style={styles.container}>
-      <View style={{width: 250, height: 250, position: "relative"}}>
-        {cards.map((album, index) => {
-          if(index < 6) return<CardItem key={album.title + album.artist + album.sideLetter} album={album} index={index} shuffleCards={shuffleCards} />;})}
-      </View>
-      <View style={styles.textContainer}>
-        {cards.length > 0 && (
-          <Text numberOfLines={2} className="font-bold text-lg text-gray-200 text-center">{cards[0].title} — {cards[0].artist} {cards[0].sideLetter ? ` (Side ${cards[0].sideLetter})` : ""}</Text>
-        )}
-      </View>
-      <View>
-        <ShuffleButton callParentFunction={shuffleCards} />
-      </View>
+      {queueMode && albums.length === 0 ? (
+        <View>
+          <Text className="text-gray-200 font-semibold text-lg">Go into library and queue some records up!</Text>
+        </View>
+      ) : (
+        <View style={styles.container}>
+          <View style={{width: 250, height: 250, position: "relative"}}>
+            {cards.map((album, index) => {
+              if(index < 6) return<CardItem key={album.title + album.artist + album.sideLetter + index} album={album} index={index} shuffleCards={shuffleCards} />;})}
+          </View>
+          <View style={styles.textContainer}>
+            {cards.length > 0 && (
+              <Text numberOfLines={2} className="font-bold text-lg text-gray-200 text-center">{cards[0].title} — {cards[0].artist} {cards[0].sideLetter ? ` (Side ${cards[0].sideLetter})` : ""}</Text>
+            )}
+          </View>
+          <View>
+            <ShuffleButton callParentFunction={shuffleCards} />
+          </View>
+        </View>
+      )}
     </View>
   )
 }

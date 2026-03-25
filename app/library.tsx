@@ -25,24 +25,33 @@ export interface Album {
 }
 type libraryProps = {
   albums: Album[],
+  selectedGenres: string[];
+  queueMode: boolean;
   onClose: () => void;
   visible: boolean;
   onUpdateAlbumGenres: (albumTitle: string, albumArtist: string, genres: string[]) => void;
   onRemoveAlbumL: (album: Album) => void;
+  queueAlbum: (album: Album) => void;
 }
 
 export default function ShowLibrary({
   albums,
+  selectedGenres,
+  queueMode,
   onClose,
   visible,
   onUpdateAlbumGenres,
   onRemoveAlbumL,
+  queueAlbum,
   }: libraryProps) {
   const [selected, setSelected] = useState<Album | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const itemSize = ((Dimensions.get("window").width) - 48) / 3;
+
+  const albumsWithFilteredGenres = albums.filter(item => selectedGenres.length > 0 ? item.genres.some(genre => selectedGenres.includes(genre)) : true)
+
   const flattened: Album[] = Object.values(
-    [...albums].reduce<Record<string, Album>>((acc, a) => (acc[a.title.toLowerCase()] ??= a, acc), {})
+    albumsWithFilteredGenres.reduce<Record<string, Album>>((acc, a) => (acc[a.title.toLowerCase()] ??= a, acc), {})
   );
   const sortedAlbums = flattened.sort((a,b) => {
     const artistCompare = a.artist.trim().localeCompare(b.artist.trim(), undefined, {
@@ -152,6 +161,7 @@ export default function ShowLibrary({
           <AlbumInfoModal
             visible={!!selected}
             album={selected}
+            queueMode={queueMode}
             onClose={() => setSelected(null)}
             onUpdateGenres={(newGenres) => {
               if(!selected) return;
@@ -160,6 +170,7 @@ export default function ShowLibrary({
             onRemoveAlbum={(album) => {
               confirmRemoveAlbum(album);
             }}
+            queueAlbum={queueAlbum}
           />
           <View className="absolute bottom-0 mb-16 left-0 right-0 items-center p-4 ">
             <Pressable

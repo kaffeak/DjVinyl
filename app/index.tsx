@@ -28,6 +28,7 @@ const client = new Client()
 
 export const db = new Databases(client);
 const LAST_LIBRARY_KEY = "lastLibrary";
+const LAST_QUEUE = "lastQueue";
 
 const shuffleArray = <T,>(array: T[]): T[] => {
   const copy = [...array];
@@ -53,6 +54,8 @@ export default function Index() {
   const [shuffledAlbums, setShuffledAlbums] = useState<Album[]>([]);
   const [albumIndex, setAlbumIndex] = useState(0);
 
+  const [queueMode, setQueueMode] = useState<boolean>(false);
+
   const [currentAlbum, setCurrentAlbum] = useState<{
     title: string;
     artist: string;
@@ -66,6 +69,67 @@ export default function Index() {
   const [selectedGenres, setSelectedGenres] = useState<string[]>([]);
   const [allGenres, setAllGenres] = useState<Record<string, number>>({});
   const [isCoverLoading, setIsCoverLoading] = useState(true);
+
+  const [cards, setCards] = useState<Album[]>(albums);
+
+  useEffect(() => {
+    if (!albums.length) return;
+    console.log(queueMode);
+
+    const makeKey = (a: { title: string; artist: string }) =>
+      `${a.title.trim().toLowerCase()}|${a.artist.trim().toLowerCase()}`;
+
+    const getQueue = async () => {
+      try {
+        const saved = await AsyncStorage.getItem(LAST_QUEUE);
+        if (!saved) {
+          setShuffledAlbums([]);
+          return;
+        }
+        const keys: string[] = JSON.parse(saved);
+        if (!keys.length) {
+          setShuffledAlbums([]);
+          return;
+        }
+        const albumMap = new Map(
+          albums.map(a => [makeKey(a), a])
+        );
+
+        const queuedAlbums = keys
+          .map(key => albumMap.get(key))
+          .filter((a): a is Album => !!a);
+
+        setShuffledAlbums(queuedAlbums);
+      } catch (e) {
+        console.error("Failed to load queue", e);
+        setShuffledAlbums([]);
+      }
+    };
+
+    const saveQueue = async () => {
+      try {
+        const keys = cards.map(makeKey);
+        await AsyncStorage.setItem(LAST_QUEUE, JSON.stringify(keys));
+
+        reshuffleAlbums();
+      } catch (e) {
+        console.error("Failed to save queue", e);
+      }
+    };
+    const run = async () => {
+      if (queueMode) {
+        await getQueue();
+      } else {
+        await saveQueue();
+      }
+      setAlbumIndex(0);
+    };
+    run();
+  }, [queueMode]);
+
+  useEffect(() => {
+    reshuffleAlbums();
+  }, [selectedGenres]);
 
   useEffect(() => {
     (async () => {
@@ -342,6 +406,7 @@ export default function Index() {
   }, [albumIndex, shuffledAlbums]);
 
   const reshuffleAlbums = () => {
+    if(queueMode) return;
     let pool = albums;
 
     if (selectedGenres.length > 0) {
@@ -481,6 +546,11 @@ export default function Index() {
     }
   }
 
+  const queueAlbum = (album: Album) => {
+    Haptics.selectionAsync();
+    setShuffledAlbums((prev) => [...prev, album]);
+  }
+
   const handleSetSides = (input: string) => {
     const parsed = parseInt(input, 10);
     setSides(isNaN(parsed) ? null : parsed);
@@ -547,7 +617,7 @@ export default function Index() {
           </View>
           {/*Here starts the ablum content*/}
           <View className="flex-1 items-center justify-center">
-            <AlbumCards albums={shuffledAlbums} reShuffleAlbums={reshuffleAlbums}/>
+            <AlbumCards albums={shuffledAlbums} reShuffleAlbums={reshuffleAlbums} queueMode={queueMode} setShuffledAlbums={setShuffledAlbums} cards={cards} setCards={setCards}/>
           </View>
           <View className="items-center mb-16">
             <Pressable
@@ -642,20 +712,24 @@ export default function Index() {
             visible={settingsMenu}
             onClose={() => {
               setSettingsMenu(false);
-              reshuffleAlbums();
             }}
             shuffleMode={shuffleMode}
             setShuffleMode={setShuffleMode}
+            queueMode={queueMode}
+            setQueueMode={setQueueMode}
             selectedGenres={selectedGenres}
             toggleGenre={toggleGenre}
             allGenres={allGenres}
           />
           <ShowLibrary
             visible={library}
-            albums={shuffledAlbums}
+            albums={albums}
+            queueMode={queueMode}
+            selectedGenres={selectedGenres}
             onUpdateAlbumGenres={handleUpdateGenres}
             onRemoveAlbumL={removeAlbum}
             onClose={() => {setLibrary(false)}}
+            queueAlbum={queueAlbum}
           />
         </View>
       </LinearGradient>

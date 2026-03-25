@@ -41,10 +41,12 @@ export interface Album {
 interface Props {
   visible: boolean;
   album: Album | null;
+  queueMode: boolean;
   onClose: () => void;
   cardSize?: number;
   onUpdateGenres?: (genres: string[]) => void;
   onRemoveAlbum?: (album: Album) => void;
+  queueAlbum: (album: Album) => void;
 }
 
 const { width: screenWidth} = Dimensions.get("window");
@@ -52,10 +54,12 @@ const { width: screenWidth} = Dimensions.get("window");
 export default function AlbumInfoModal({
   visible,
   album,
+  queueMode,
   onClose,
   cardSize = Math.floor(screenWidth * 0.82),
   onUpdateGenres,
   onRemoveAlbum,
+  queueAlbum,
 }: Props) {
   const [colors, setColors] = useState<AndroidColors | null>(null)
   const [top, setTop] = useState<string>("#1e293b")
@@ -198,10 +202,38 @@ export default function AlbumInfoModal({
               colors={[top, bottom]}
               style={[styles.info]}
             >
-              <Text style={[styles.title, {color: textColor}]}>Title: {album.title}</Text>
-              <Text style={[styles.artist, {color: textColor}]}>Artist: {album.artist}</Text>
-              <View style={styles.metaRow}>
-                <Text style={[styles.metaLabel, {color: textColor}]}>Sides: {album.sides}</Text>
+              <View style={{ flexDirection: "row", alignItems: "center" }}>
+
+                {/* LEFT */}
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.title, {color: textColor}]}>
+                    Title: {album.title}
+                  </Text>
+                  <Text style={[styles.artist, {color: textColor}]}>
+                    Artist: {album.artist}
+                  </Text>
+                  <View style={styles.metaRow}>
+                    <Text style={[styles.metaLabel, {color: textColor}]}>
+                      Sides: {album.sides}
+                    </Text>
+                  </View>
+                </View>
+
+                {queueMode && (
+                  <Pressable
+                    onPress={() => queueAlbum(album)}
+                    style={{
+                      backgroundColor: invert(bottom),
+                      paddingHorizontal: 10,
+                      paddingVertical: 6,
+                      borderRadius: 8,
+                    }}
+                  >
+                    <Text style={{ color: bottom, fontSize: 13 }}>
+                      Add to queue
+                    </Text>
+                  </Pressable>
+                )}
               </View>
               <PagerView
                 ref={pagerRef}

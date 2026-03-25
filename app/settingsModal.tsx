@@ -1,4 +1,4 @@
-import {Modal, Pressable, ScrollView, Text, View} from "react-native";
+import {Modal, Pressable, ScrollView, Switch, Text, View} from "react-native";
 import {LinearGradient} from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
 
@@ -7,6 +7,8 @@ type SettingsModalProps={
     onClose: () => void;
     shuffleMode: "albums" | "sides";
     setShuffleMode: (mode: "albums" | "sides") => void;
+    queueMode: boolean;
+    setQueueMode: (queue: boolean) => void;
     selectedGenres: string[];
     toggleGenre: (genre: string) => void;
     allGenres: Record<string, number>;
@@ -17,6 +19,8 @@ export default function SettingsModal({
     onClose,
     shuffleMode,
     setShuffleMode,
+    queueMode,
+    setQueueMode,
     selectedGenres,
     toggleGenre,
     allGenres,
@@ -101,6 +105,16 @@ export default function SettingsModal({
                                 </Text>
                             </LinearGradient>
                         </Pressable>
+                    </View>
+                    <View className="flex-row justify-around mb-3">
+                        <Text className="text-lg font-semibold">{queueMode ? "Queue mode!" : "Shuffle mode!"}</Text>
+                        <Switch
+                          value={queueMode}
+                          onValueChange={() => {
+                              Haptics.selectionAsync();
+                              setQueueMode(!queueMode);
+                          }}
+                        />
                     </View>
                     <Text className="text-lg font-semibold mb-2 text-gray-800">Filter by Genre</Text>
                     <ScrollView

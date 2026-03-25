@@ -58,6 +58,8 @@ export default function Index() {
   const prevQueueMode = useRef(queueMode);
   const isSwitchingLibrary = useRef(false);
 
+  const [queueProgress, setQueueProgress] = useState<Album[]>([]);
+
   const [currentAlbum, setCurrentAlbum] = useState<{
     title: string;
     artist: string;
@@ -72,6 +74,46 @@ export default function Index() {
   const [allGenres, setAllGenres] = useState<Record<string, number>>({});
   const [isCoverLoading, setIsCoverLoading] = useState(true);
 
+  const toggleQueueMode = async (current: boolean) => {
+    const next = !current;
+    setQueueMode(next);
+    if (current) {
+      const queueSnapshot = [...queueProgress];
+      await saveQueue(owner, queueSnapshot);
+      reshuffleAlbums(next);
+    }
+    else {
+      await getQueue();
+    }
+  }
+
+  const getQueue = async () => {
+    try {
+      const saved = await AsyncStorage.getItem(LAST_QUEUE+owner);
+      if (!saved) {
+        setShuffledAlbums([]);
+        return;
+      }
+      const keys: string[] = JSON.parse(saved);
+      if (!keys.length) {
+        setShuffledAlbums([]);
+        return;
+      }
+      const albumMap = new Map(
+        albums.map(a => [makeKey(a), a])
+      );
+
+      const queuedAlbums = keys
+        .map(key => albumMap.get(key))
+        .filter((a): a is Album => !!a);
+
+      setShuffledAlbums(queuedAlbums);
+    } catch (e) {
+      console.error("Failed to load queue", e);
+      setShuffledAlbums([]);
+    }
+  };
+
   const makeKey = (a: { title: string; artist: string }) =>
     `${a.title.trim().toLowerCase()}|${a.artist.trim().toLowerCase()}`;
 
@@ -85,52 +127,7 @@ export default function Index() {
   };
 
   useEffect(() => {
-    if (!albums.length) return;
-    if (isSwitchingLibrary.current) return;
-    console.log(queueMode);
-
-    const getQueue = async () => {
-      try {
-        const saved = await AsyncStorage.getItem(LAST_QUEUE+owner);
-        if (!saved) {
-          setShuffledAlbums([]);
-          return;
-        }
-        const keys: string[] = JSON.parse(saved);
-        if (!keys.length) {
-          setShuffledAlbums([]);
-          return;
-        }
-        const albumMap = new Map(
-          albums.map(a => [makeKey(a), a])
-        );
-
-        const queuedAlbums = keys
-          .map(key => albumMap.get(key))
-          .filter((a): a is Album => !!a);
-
-        setShuffledAlbums(queuedAlbums);
-      } catch (e) {
-        console.error("Failed to load queue", e);
-        setShuffledAlbums([]);
-      }
-    };
-
-    const run = async () => {
-      if (queueMode && !prevQueueMode.current) {
-        await getQueue();
-      } else if (!queueMode && prevQueueMode.current) {
-        await saveQueue(owner, shuffledAlbums);
-        reshuffleAlbums();
-      }
-      setAlbumIndex(0);
-      prevQueueMode.current = queueMode;
-    };
-    run();
-  }, [queueMode]);
-
-  useEffect(() => {
-    reshuffleAlbums();
+    reshuffleAlbums(queueMode);
   }, [selectedGenres]);
 
   useEffect(() => {
@@ -385,7 +382,7 @@ export default function Index() {
   }, [owner]);
 
   useEffect(() => {
-    reshuffleAlbums();
+    reshuffleAlbums(queueMode);
     const genreCount: Record<string, number> = {};
     albums.forEach((album) => {
       if (Array.isArray(album.genres)) {
@@ -410,8 +407,8 @@ export default function Index() {
     }
   }, [albumIndex, shuffledAlbums]);
 
-  const reshuffleAlbums = () => {
-    if(queueMode) return;
+  const reshuffleAlbums = (queue: boolean) => {
+    if(queue) return;
     let pool = albums;
 
     if (selectedGenres.length > 0) {
@@ -563,11 +560,10 @@ export default function Index() {
 
   const changeLibrary = async () => {
     if (queueMode) {
-      const queueSnapshot = [...shuffledAlbums];
-      await saveQueue(owner, queueSnapshot);
+      await toggleQueueMode(queueMode);
     }
-    isSwitchingLibrary.current = true;
-    setQueueMode(false);
+    //isSwitchingLibrary.current = true;
+    //setQueueMode(false);
     const newLib = owner === process.env.EXPO_PUBLIC_APPWRITE_LIBRARY_ALEX_ID ? process.env.EXPO_PUBLIC_APPWRITE_LIBRARY_MATS_ID : process.env.EXPO_PUBLIC_APPWRITE_LIBRARY_ALEX_ID;
     if(newLib){
       setOwner(newLib);
@@ -632,7 +628,8 @@ export default function Index() {
               albums={shuffledAlbums}
               reShuffleAlbums={reshuffleAlbums}
               queueMode={queueMode}
-              setShuffledAlbums={setShuffledAlbums}
+              onQueueEmpty={() => setShuffledAlbums([])}
+              onProgressChange={setQueueProgress}
             />
           </View>
           <View className="items-center mb-16">
@@ -732,7 +729,7 @@ export default function Index() {
             shuffleMode={shuffleMode}
             setShuffleMode={setShuffleMode}
             queueMode={queueMode}
-            setQueueMode={setQueueMode}
+            toggleQueueMode={toggleQueueMode}
             selectedGenres={selectedGenres}
             toggleGenre={toggleGenre}
             allGenres={allGenres}

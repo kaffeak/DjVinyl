@@ -1,5 +1,5 @@
-import React, {useEffect, useState} from "react";
-import {StyleSheet, Text, View} from "react-native";
+import React, {useCallback, useEffect, useState} from "react";
+import {Pressable, StyleSheet, Text, View} from "react-native";
 import CardItem from "@/app/CardItem";
 import {scheduleOnRN} from "react-native-worklets";
 import ShuffleButton from "@/app/shuffleButton";
@@ -14,50 +14,48 @@ export interface Album {
 }
 type Props = {
   albums: Album[],
-  reShuffleAlbums: () => void,
+  reShuffleAlbums: (bool: boolean) => void,
   queueMode: boolean,
-  setShuffledAlbums: React.Dispatch<React.SetStateAction<Album[]>>,
+  onQueueEmpty: () => void,
+  onProgressChange?: (cards: Album[]) => void,
 }
 
-const AlbumCards = ({albums, reShuffleAlbums, queueMode, setShuffledAlbums}: Props) => {
-
-  const [cards, setCards] = useState<Album[]>([]);
+const AlbumCards = ({ albums, reShuffleAlbums, queueMode, onQueueEmpty, onProgressChange }: Props) => {
+  const [cards, setCards] = useState<Album[]>(albums);
 
   useEffect(() => {
-    setCards(albums);
+    setCards(prev => {
+      if (!queueMode) return albums;
+      if (prev.length === 0) return albums;
+      const makeKey = (a: Album) => `${a.title}|${a.artist}|${a.sideLetter ?? ""}`;
+      const prevFirstKey = makeKey(prev[0]);
+      const startIndex = albums.findIndex(a => makeKey(a) === prevFirstKey);
+      if (startIndex === -1) return albums;
+      return albums.slice(startIndex);
+    })
   }, [albums]);
 
-  const shuffleCards = () => {
-    const updatedCards = [...cards];
-    const firstCard = updatedCards.shift();
-    if (firstCard) {
-      setCards(updatedCards);
-      if(updatedCards.length === 0) {
-        if (queueMode) setShuffledAlbums([]);
-        else scheduleOnRN(reShuffleAlbums);
-      }
-    }
-  }
+  useEffect(() => {
+    onProgressChange?.(cards)
+  }, [cards]);
 
-  /*const shuffleCards = () => {
+  const shuffleCards = useCallback(() => {
     setCards(prev => {
-      const updated = [...prev];
-      const firstCard = updated.shift();
+      if (prev.length === 0) return prev;
 
-      if (!firstCard) return prev;
+      const updated = prev.slice(1);
 
       if (updated.length === 0) {
         if (queueMode) {
-          return [];
+          onQueueEmpty?.();
         } else {
-          scheduleOnRN(reShuffleAlbums);
-          return prev;
+          scheduleOnRN(() => reShuffleAlbums(queueMode));
         }
       }
 
       return updated;
     });
-  };*/
+  }, [queueMode, onQueueEmpty, reShuffleAlbums]);
   return (
     <View style={styles.container}>
       {queueMode && albums.length === 0 ? (
@@ -68,7 +66,7 @@ const AlbumCards = ({albums, reShuffleAlbums, queueMode, setShuffledAlbums}: Pro
         <View style={styles.container}>
           <View style={{width: 250, height: 250, position: "relative"}}>
             {cards.map((album, index) => {
-              if(index < 6) return<CardItem key={album.title + album.artist + album.sideLetter + index} album={album} index={index} shuffleCards={shuffleCards} />;})}
+              if(index < 6) return<CardItem key={album.title + album.artist + (album.sideLetter ?? "")} album={album} index={index} shuffleCards={shuffleCards} />;})}
           </View>
           <View style={styles.textContainer}>
             {cards.length > 0 && (
@@ -78,6 +76,21 @@ const AlbumCards = ({albums, reShuffleAlbums, queueMode, setShuffledAlbums}: Pro
           <View>
             <ShuffleButton callParentFunction={shuffleCards} />
           </View>
+          {queueMode && cards.length > 0 && (
+            <Pressable
+            onPress={onQueueEmpty}
+            style={{
+              marginTop: 24,
+              paddingVertical: 10,
+              paddingHorizontal: 20,
+              backgroundColor: "#ef4444", // red-500
+              borderRadius: 999,
+            }}
+          >
+            <Text style={{color: "white", fontWeight: "600"}}>
+              Clear Queue
+            </Text>
+          </Pressable>)}
         </View>
       )}
     </View>

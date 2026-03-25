@@ -171,7 +171,7 @@ const CardItem = ({index, album, shuffleCards}: Props) => {
     </GestureDetector>
   )
 }
-export default CardItem;
+export default React.memo(CardItem);
 
 const styles = StyleSheet.create({
   container: {

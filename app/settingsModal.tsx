@@ -8,7 +8,7 @@ type SettingsModalProps={
     shuffleMode: "albums" | "sides";
     setShuffleMode: (mode: "albums" | "sides") => void;
     queueMode: boolean;
-    setQueueMode: (queue: boolean) => void;
+    toggleQueueMode: (queue: boolean) => void;
     selectedGenres: string[];
     toggleGenre: (genre: string) => void;
     allGenres: Record<string, number>;
@@ -20,7 +20,7 @@ export default function SettingsModal({
     shuffleMode,
     setShuffleMode,
     queueMode,
-    setQueueMode,
+    toggleQueueMode,
     selectedGenres,
     toggleGenre,
     allGenres,
@@ -112,7 +112,7 @@ export default function SettingsModal({
                           value={queueMode}
                           onValueChange={() => {
                               Haptics.selectionAsync();
-                              setQueueMode(!queueMode);
+                              toggleQueueMode(queueMode);
                           }}
                         />
                     </View>

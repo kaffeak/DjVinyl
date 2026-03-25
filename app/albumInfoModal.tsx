@@ -1,5 +1,6 @@
 import React, {useEffect, useRef, useState} from "react";
-import {getColors, ImageColorsResult} from 'react-native-image-colors';
+import {getColors} from 'react-native-image-colors';
+import PagerView from 'react-native-pager-view';
 import invert from 'invert-color';
 import {
   Animated,
@@ -10,11 +11,10 @@ import {
   TouchableWithoutFeedback,
   Dimensions,
   StyleSheet, Pressable,
-  TextInput, KeyboardAvoidingView, Platform,
+  TextInput, KeyboardAvoidingView, Platform, ScrollView,
 } from "react-native";
 import {LinearGradient} from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
-import pressable from "react-native-gesture-handler/src/components/Pressable";
 
 type AndroidColors = {
   average?: string;
@@ -34,7 +34,8 @@ export interface Album {
   url: string;
   sides: number;
   genres: string[],
-  sideLetter?: string;
+  trackList: string[],
+  sideLetter?: string,
 }
 
 interface Props {
@@ -46,7 +47,7 @@ interface Props {
   onRemoveAlbum?: (album: Album) => void;
 }
 
-const { width: screenWidth } = Dimensions.get("window");
+const { width: screenWidth} = Dimensions.get("window");
 
 export default function AlbumInfoModal({
   visible,
@@ -61,16 +62,11 @@ export default function AlbumInfoModal({
   const [bottom, setBottom] = useState<string>("#0f172a")
   const [textColor, setTextColor] = useState<string>(invert("#1e293b"))
   const anim = useRef(new Animated.Value(0)).current;
-  //const [localAlbum, setLocalAlbum] = useState<Album | null>(album || null);
+
+  const pagerRef = useRef<PagerView>(null);
 
   const [editGenres, setEditGenres] = useState<boolean>(false);
   const [newGenre, setNewGenre] = useState<string>("");
-  // anim: 0 = hidden, 1 = shown
-
-  /*useEffect(() => {
-    setLocalAlbum(album);
-  }, [album]);*/
-
   useEffect(() => {
     if(!visible) {
       setEditGenres(false);
@@ -149,6 +145,19 @@ export default function AlbumInfoModal({
 
   if (!album) return null;
 
+  const parseTrack = (track: string) => {
+    const index = track.lastIndexOf(" - ");
+
+    if (index === -1) {
+      return { title: track, duration: "" };
+    }
+
+    return {
+      title: track.slice(0, index),
+      duration: track.slice(index + 3),
+    };
+  };
+
   return (
     <Modal visible={visible} transparent animationType="none" onRequestClose={onClose}>
       <KeyboardAvoidingView
@@ -160,12 +169,13 @@ export default function AlbumInfoModal({
           <View style={[styles.overlay, { opacity: 0.6 }]} />
         </TouchableWithoutFeedback>
 
-        <View style={styles.cardContainer}>
+        <View style={styles.cardContainer} className="max-h-4/5">
           <Animated.View
             style={[
               styles.card,
               {
                 width: cardSize,
+                height: cardSize * 2.2,
                 transform: [{ translateY }, { scale }],
               },
             ]}
@@ -193,72 +203,137 @@ export default function AlbumInfoModal({
               <View style={styles.metaRow}>
                 <Text style={[styles.metaLabel, {color: textColor}]}>Sides: {album.sides}</Text>
               </View>
-              {Array.isArray(album.genres) && (
-                <>
-                  <View style={styles.genresWrap}>
-                    {album.genres.map((g, i) => (
-                      <Pressable
-                        key={`${g}-${i}`}
-                        disabled={!editGenres}
-                        onPress={() => {
-                          if (editGenres) {
-                            Haptics.selectionAsync();
-                            handleRemoveGenre(g);
-                          }
-                        }}
-                        style={[styles.genreChip, { backgroundColor: invert(bottom), position: "relative" }]}
-                      >
-                        <Text style={[styles.genreText, {color: bottom}]}>{g.charAt(0).toUpperCase() + g.slice(1)}</Text>
-                        {editGenres && (
-                          <View style={styles.minusBadge}>
-                            <Text style={{ color: "#fff", fontWeight: "bold", fontSize: 10 }}>−</Text>
-                          </View>
-                        )}
-                      </Pressable>
-                    ))}
-                  </View>
-                  <View
-                    style={styles.editRow}
+              <PagerView
+                ref={pagerRef}
+                style={{flex: 1}}
+                initialPage={0}
+              >
+                <View className="w-full flex-1" key={1}>
+                  <ScrollView
+                    contentContainerStyle={{ paddingBottom: 20 }}
+                    showsVerticalScrollIndicator={false}
                   >
-                    <Pressable
-                      onPress={() => {
-                        Haptics.selectionAsync();
-                        setEditGenres((prev) => !prev);
-                      }}
-                    >
-                      <View style={[styles.genreChip, {backgroundColor: invert(bottom)}]}>
-                        <Text style={[styles.genreText, {color: bottom}]}>{editGenres ? "Done" : "Edit"}</Text>
-                      </View>
-                    </Pressable>
-
-                    {editGenres && (
-                      <>
-                        <TextInput
-                          value={newGenre}
-                          onChangeText={setNewGenre}
-                          placeholder="New genre"
-                          placeholderTextColor={invert(bottom)}
-                          style={[styles.genreInput, {borderColor: invert(bottom), color: invert(bottom), width: 80,},]}
-                          onSubmitEditing={() => {
-                            Haptics.selectionAsync();
-                            handleAddGenres();
-                          }}
-                          returnKeyType="done"
-                        />
+                {Array.isArray(album.genres) && (
+                  <>
+                    <View style={styles.genresWrap}>
+                      {album.genres.map((g, i) => (
                         <Pressable
+                          key={`${g}-${i}`}
+                          disabled={!editGenres}
                           onPress={() => {
-                            Haptics.selectionAsync();
-                            handleAddGenres();
-                          }}>
-                          <View style={[styles.genreChip, {backgroundColor: invert(bottom)}]}>
-                            <Text style={[styles.genreText, {color: bottom}]}>Add</Text>
-                          </View>
+                            if (editGenres) {
+                              Haptics.selectionAsync();
+                              handleRemoveGenre(g);
+                            }
+                          }}
+                          style={[styles.genreChip, { backgroundColor: invert(bottom), position: "relative" }]}
+                        >
+                          <Text style={[styles.genreText, {color: bottom}]}>{g.charAt(0).toUpperCase() + g.slice(1)}</Text>
+                          {editGenres && (
+                            <View style={styles.minusBadge}>
+                              <Text style={{ color: "#fff", fontWeight: "bold", fontSize: 10 }}>−</Text>
+                            </View>
+                          )}
                         </Pressable>
-                      </>
-                    )}
+                      ))}
+                    </View>
+                    <View
+                      style={styles.editRow}
+                    >
+                      <Pressable
+                        onPress={() => {
+                          Haptics.selectionAsync();
+                          setEditGenres((prev) => !prev);
+                        }}
+                      >
+                        <View style={[styles.genreChip, {backgroundColor: invert(bottom)}]}>
+                          <Text style={[styles.genreText, {color: bottom}]}>{editGenres ? "Done" : "Edit"}</Text>
+                        </View>
+                      </Pressable>
+
+                      {editGenres && (
+                        <>
+                          <TextInput
+                            value={newGenre}
+                            onChangeText={setNewGenre}
+                            placeholder="New genre"
+                            placeholderTextColor={invert(bottom)}
+                            style={[styles.genreInput, {borderColor: invert(bottom), color: invert(bottom), width: 80,},]}
+                            onSubmitEditing={() => {
+                              Haptics.selectionAsync();
+                              handleAddGenres();
+                            }}
+                            returnKeyType="done"
+                          />
+                          <Pressable
+                            onPress={() => {
+                              Haptics.selectionAsync();
+                              handleAddGenres();
+                            }}>
+                            <View style={[styles.genreChip, {backgroundColor: invert(bottom)}]}>
+                              <Text style={[styles.genreText, {color: bottom}]}>Add</Text>
+                            </View>
+                          </Pressable>
+                        </>
+                      )}
+                    </View>
+                  </>
+                )}
+                  </ScrollView>
+                </View>
+                <View className="w-full flex-1" key={2}>
+                  <ScrollView
+                    contentContainerStyle={{ paddingBottom: 20 }}
+                    showsVerticalScrollIndicator={false}
+                  >
+                  <View  style={styles.songsWrap}>
+                  {album.trackList?.length ? (
+                    album.trackList.map((track: string, i: number) => {
+                      const {title, duration} = parseTrack(track);
+                      return (
+                      <View
+                        key={i}
+                        style={{
+                          flexDirection: "row",
+                          justifyContent: "space-between",
+                          width: "100%",
+                        }}
+                      >
+                        <View style={{ flex: 1, flexDirection: "row", alignItems: "center" }}>
+                          <Text style={{ color: invert(bottom), width: 24 }}>
+                            {i + 1}.
+                          </Text>
+
+                          <Text
+                            style={{ color: invert(bottom), flexShrink: 1 }}
+                            numberOfLines={1}
+                            ellipsizeMode="tail"
+                          >
+                            {title}
+                          </Text>
+                        </View>
+
+                        <Text
+                          style={{
+                            color: `${invert(bottom)}99`,
+                            fontSize: 14,
+                            marginLeft: 10,
+                            minWidth: 40,
+                            textAlign: "right",
+                          }}
+                        >
+                          {duration}
+                        </Text>
+                      </View>
+                    )
+                    })
+                  ) : (
+                    <Text style={{ color: invert(bottom) }}>No tracklist available</Text>
+                  )}
                   </View>
-                </>
-              )}
+                  </ScrollView>
+                </View>
+              </PagerView>
             </LinearGradient>
           </Animated.View>
         </View>
@@ -309,6 +384,13 @@ const styles = StyleSheet.create({
     marginTop: 10,
     gap: 8, // RN 0.71+ supports gap; otherwise rely on margin in chips
   },
+  songsWrap: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "center",
+    marginTop: 10,
+    gap: 8, // RN 0.71+ supports gap; otherwise rely on margin in chips
+  },
   genreText: {
     fontSize: 12,
     fontWeight: "600",
@@ -350,7 +432,7 @@ const styles = StyleSheet.create({
     zIndex: 10,
   },
   image: { width: "100%", height: "100%" },
-  info: { padding: 14},
+  info: { padding: 14, flex: 1},
   title: { fontSize: 20, fontWeight: "700", marginBottom: 4 },
   artist: { fontSize: 16, marginBottom: 8 },
   metaRow: { flexDirection: "row", marginBottom: 6 },

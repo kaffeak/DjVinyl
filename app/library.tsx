@@ -1,20 +1,16 @@
 import {
   Modal,
   Pressable,
-  ScrollView,
   Text,
   View,
   Dimensions,
-  TouchableOpacity,
   Alert,
   FlatList, TextInput
 } from "react-native";
-import { Image } from "expo-image";
 import * as Haptics from "expo-haptics";
 import {LinearGradient} from "expo-linear-gradient";
 import {useCallback, useEffect, useMemo, useState} from "react";
 import AlbumInfoModal from "@/app/albumInfoModal";
-import AlbumCover from "@/app/albumCover";
 import AlbumGridItem from "@/app/albumGridItem";
 import {Ionicons} from "@expo/vector-icons";
 
@@ -24,6 +20,7 @@ export interface Album {
   url: string;
   sides: number;
   genres: string[],
+  trackList: string[],
   sideLetter?: string;
 }
 type libraryProps = {
@@ -66,7 +63,6 @@ export default function ShowLibrary({
 
   useEffect(() => {
     if (!selected) return;
-
     const updated = albums.find(
       a => a.title === selected.title && a.artist === selected.artist
     );
@@ -103,6 +99,7 @@ export default function ShowLibrary({
   const handleSelect = useCallback((album: Album) => {
     setSelected(album);
   }, []);
+
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>

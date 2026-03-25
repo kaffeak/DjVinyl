@@ -1,4 +1,4 @@
-import {View, Text, Pressable, Animated} from 'react-native'
+import {Text, Pressable, Animated} from 'react-native'
 import React, {useRef} from 'react'
 import {LinearGradient} from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";

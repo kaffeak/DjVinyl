@@ -1,7 +1,7 @@
 import {Pressable, Text, TextInput, View, Modal} from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import {Databases, Client, ID, Query} from "appwrite";
-import {useState, useEffect} from "react";
+import {useState, useEffect, useRef} from "react";
 import {Ionicons} from "@expo/vector-icons";
 import SettingsModal from "@/app/settingsModal";
 import * as Haptics from "expo-haptics";
@@ -55,6 +55,8 @@ export default function Index() {
   const [albumIndex, setAlbumIndex] = useState(0);
 
   const [queueMode, setQueueMode] = useState<boolean>(false);
+  const prevQueueMode = useRef(queueMode);
+  const isSwitchingLibrary = useRef(false);
 
   const [currentAlbum, setCurrentAlbum] = useState<{
     title: string;
@@ -70,18 +72,26 @@ export default function Index() {
   const [allGenres, setAllGenres] = useState<Record<string, number>>({});
   const [isCoverLoading, setIsCoverLoading] = useState(true);
 
-  const [cards, setCards] = useState<Album[]>(albums);
+  const makeKey = (a: { title: string; artist: string }) =>
+    `${a.title.trim().toLowerCase()}|${a.artist.trim().toLowerCase()}`;
+
+  const saveQueue = async (libOwner: string, albumsToSave: Album[]) => {
+    try {
+      const keys = albumsToSave.map(makeKey);
+      await AsyncStorage.setItem(LAST_QUEUE+libOwner, JSON.stringify(keys));
+    } catch (e) {
+      console.error("Failed to save queue", e);
+    }
+  };
 
   useEffect(() => {
     if (!albums.length) return;
+    if (isSwitchingLibrary.current) return;
     console.log(queueMode);
-
-    const makeKey = (a: { title: string; artist: string }) =>
-      `${a.title.trim().toLowerCase()}|${a.artist.trim().toLowerCase()}`;
 
     const getQueue = async () => {
       try {
-        const saved = await AsyncStorage.getItem(LAST_QUEUE);
+        const saved = await AsyncStorage.getItem(LAST_QUEUE+owner);
         if (!saved) {
           setShuffledAlbums([]);
           return;
@@ -106,23 +116,15 @@ export default function Index() {
       }
     };
 
-    const saveQueue = async () => {
-      try {
-        const keys = cards.map(makeKey);
-        await AsyncStorage.setItem(LAST_QUEUE, JSON.stringify(keys));
-
-        reshuffleAlbums();
-      } catch (e) {
-        console.error("Failed to save queue", e);
-      }
-    };
     const run = async () => {
-      if (queueMode) {
+      if (queueMode && !prevQueueMode.current) {
         await getQueue();
-      } else {
-        await saveQueue();
+      } else if (!queueMode && prevQueueMode.current) {
+        await saveQueue(owner, shuffledAlbums);
+        reshuffleAlbums();
       }
       setAlbumIndex(0);
+      prevQueueMode.current = queueMode;
     };
     run();
   }, [queueMode]);
@@ -373,8 +375,11 @@ export default function Index() {
           genres: album.genres,
           trackList: album.trackList,
         }))
-        setShuffledAlbums(shuffleArray(cleanedAlbums));
-        setAlbumIndex(0);
+        if (!isSwitchingLibrary.current){
+          setShuffledAlbums(shuffleArray(cleanedAlbums));
+          setAlbumIndex(0);
+        }
+        else isSwitchingLibrary.current = false;
       })
       .catch((error) => console.error(error));
   }, [owner]);
@@ -556,7 +561,13 @@ export default function Index() {
     setSides(isNaN(parsed) ? null : parsed);
   }
 
-  const changeLibrary = () => {
+  const changeLibrary = async () => {
+    if (queueMode) {
+      const queueSnapshot = [...shuffledAlbums];
+      await saveQueue(owner, queueSnapshot);
+    }
+    isSwitchingLibrary.current = true;
+    setQueueMode(false);
     const newLib = owner === process.env.EXPO_PUBLIC_APPWRITE_LIBRARY_ALEX_ID ? process.env.EXPO_PUBLIC_APPWRITE_LIBRARY_MATS_ID : process.env.EXPO_PUBLIC_APPWRITE_LIBRARY_ALEX_ID;
     if(newLib){
       setOwner(newLib);
@@ -617,7 +628,12 @@ export default function Index() {
           </View>
           {/*Here starts the ablum content*/}
           <View className="flex-1 items-center justify-center">
-            <AlbumCards albums={shuffledAlbums} reShuffleAlbums={reshuffleAlbums} queueMode={queueMode} setShuffledAlbums={setShuffledAlbums} cards={cards} setCards={setCards}/>
+            <AlbumCards
+              albums={shuffledAlbums}
+              reShuffleAlbums={reshuffleAlbums}
+              queueMode={queueMode}
+              setShuffledAlbums={setShuffledAlbums}
+            />
           </View>
           <View className="items-center mb-16">
             <Pressable

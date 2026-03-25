@@ -1,4 +1,4 @@
-import React, {useEffect} from "react";
+import React, {useEffect, useState} from "react";
 import {StyleSheet, Text, View} from "react-native";
 import CardItem from "@/app/CardItem";
 import {scheduleOnRN} from "react-native-worklets";
@@ -16,16 +16,17 @@ type Props = {
   albums: Album[],
   reShuffleAlbums: () => void,
   queueMode: boolean,
-  setShuffledAlbums: (albums: Album[]) => void,
-  cards: Album[],
-  setCards: React.Dispatch<React.SetStateAction<Album[]>>;
+  setShuffledAlbums: React.Dispatch<React.SetStateAction<Album[]>>,
 }
 
-const AlbumCards = ({albums, reShuffleAlbums, queueMode, setShuffledAlbums, cards, setCards}: Props) => {
+const AlbumCards = ({albums, reShuffleAlbums, queueMode, setShuffledAlbums}: Props) => {
+
+  const [cards, setCards] = useState<Album[]>([]);
 
   useEffect(() => {
     setCards(albums);
   }, [albums]);
+
   const shuffleCards = () => {
     const updatedCards = [...cards];
     const firstCard = updatedCards.shift();
@@ -37,6 +38,26 @@ const AlbumCards = ({albums, reShuffleAlbums, queueMode, setShuffledAlbums, card
       }
     }
   }
+
+  /*const shuffleCards = () => {
+    setCards(prev => {
+      const updated = [...prev];
+      const firstCard = updated.shift();
+
+      if (!firstCard) return prev;
+
+      if (updated.length === 0) {
+        if (queueMode) {
+          return [];
+        } else {
+          scheduleOnRN(reShuffleAlbums);
+          return prev;
+        }
+      }
+
+      return updated;
+    });
+  };*/
   return (
     <View style={styles.container}>
       {queueMode && albums.length === 0 ? (

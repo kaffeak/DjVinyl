@@ -128,7 +128,7 @@ export default function Index() {
 
   useEffect(() => {
     reshuffleAlbums(queueMode);
-  }, [selectedGenres]);
+  }, [selectedGenres, shuffleMode]);
 
   useEffect(() => {
     (async () => {

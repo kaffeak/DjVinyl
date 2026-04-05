@@ -70,12 +70,15 @@ export default function AlbumInfoModal({
 
   const pagerRef = useRef<PagerView>(null);
 
+  const [showQueueOptions, setShowQueueOptions] = useState(false);
+
   const [editGenres, setEditGenres] = useState<boolean>(false);
   const [newGenre, setNewGenre] = useState<string>("");
   useEffect(() => {
     if(!visible) {
       setEditGenres(false);
       setNewGenre("");
+      setShowQueueOptions(false);
     }
   }, [visible]);
 
@@ -204,8 +207,6 @@ export default function AlbumInfoModal({
               style={[styles.info]}
             >
               <View style={{ flexDirection: "row", alignItems: "center" }}>
-
-                {/* LEFT */}
                 <View style={{ flex: 1 }}>
                   <Text style={[styles.title, {color: textColor}]}>
                     Title: {album.title}
@@ -222,18 +223,96 @@ export default function AlbumInfoModal({
 
                 {queueMode && (
                   <Pressable
-                    onPress={() => queueAlbum(album)}
+                    onPress={() => {
+                      Haptics.selectionAsync();
+                      setShowQueueOptions((prev) => !prev);
+                    }}
                     style={{
                       backgroundColor: invert(bottom),
-                      paddingHorizontal: 10,
-                      paddingVertical: 6,
-                      borderRadius: 8,
+                      paddingHorizontal: 14,
+                      paddingVertical: 8,
+                      borderRadius: 10,
                     }}
                   >
-                    <Text style={{ color: bottom, fontSize: 13 }}>
-                      Add to queue
+                    <Text style={{ color: bottom, fontWeight: "600" }}>
+                      Queue
                     </Text>
                   </Pressable>
+                )}
+                {showQueueOptions && (
+                  <View
+                    style={{
+                      position: "absolute",
+                      right: 0,
+                      zIndex: 3,
+                      marginTop: 8,
+                      backgroundColor: "rgba(0,0,0,0.3)",
+                      borderRadius: 12,
+                      padding: 8,
+                      gap: 6,
+                    }}
+                  >
+                    <Pressable
+                      onPress={() => {
+                        Haptics.selectionAsync();
+                        queueAlbum(album);
+                        setShowQueueOptions(false);
+                      }}
+                      style={{
+                        paddingVertical: 6,
+                        paddingHorizontal: 10,
+                        borderRadius: 8,
+                        backgroundColor: invert(bottom),
+                        marginBottom: 3,
+                      }}
+                    >
+                      <Text style={{ color: bottom, fontWeight: "600" }}>
+                        Full album
+                      </Text>
+                    </Pressable>
+
+                    {album.sides > 1 &&
+                      Array.from({ length: album.sides }, (_, i) => {
+                        const letter = String.fromCharCode(65 + i);
+
+                        return (
+                          <Pressable
+                            key={letter}
+                            onPress={() => {
+                              Haptics.selectionAsync();
+                              queueAlbum({ ...album, sideLetter: letter });
+                              setShowQueueOptions(false);
+                            }}
+                            style={{
+                              paddingVertical: 6,
+                              paddingHorizontal: 10,
+                              borderRadius: 8,
+                              backgroundColor: invert(bottom),
+                              marginBottom: 3,
+                            }}
+                          >
+                            <Text style={{ color: bottom ,fontWeight: "600"}}>
+                              Side {letter}
+                            </Text>
+                          </Pressable>
+                        );
+                      })}
+                    <Pressable
+                    onPress={() => {
+                      Haptics.selectionAsync();
+                      setShowQueueOptions(false)
+                    }}
+                    style={{
+                      paddingVertical: 6,
+                      paddingHorizontal: 10,
+                      borderRadius: 8,
+                      backgroundColor: invert(bottom),
+                    }}
+                    >
+                      <Text style={{ color: bottom, fontWeight: "600" }}>Cancel</Text>
+                    </Pressable>
+                  </View>
+
                 )}
               </View>
               <PagerView

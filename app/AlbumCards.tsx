@@ -1,4 +1,4 @@
-import React, {useCallback, useEffect, useState} from "react";
+import React, {useCallback, useEffect, useRef, useState} from "react";
 import {Pressable, StyleSheet, Text, View} from "react-native";
 import CardItem from "@/app/CardItem";
 import {scheduleOnRN} from "react-native-worklets";
@@ -22,6 +22,7 @@ type Props = {
 
 const AlbumCards = ({ albums, reShuffleAlbums, queueMode, onQueueEmpty, onProgressChange }: Props) => {
   const [cards, setCards] = useState<Album[]>(albums);
+  const activCardId = useRef<string | null>(null);
 
   useEffect(() => {
     setCards(prev => {
@@ -40,6 +41,9 @@ const AlbumCards = ({ albums, reShuffleAlbums, queueMode, onQueueEmpty, onProgre
   }, [cards]);
 
   const shuffleCards = useCallback(() => {
+    //if (isSwipingRef.current) return;
+    //isSwipingRef.current = true;
+
     setCards(prev => {
       if (prev.length === 0) return prev;
 
@@ -55,6 +59,9 @@ const AlbumCards = ({ albums, reShuffleAlbums, queueMode, onQueueEmpty, onProgre
 
       return updated;
     });
+    //setTimeout(() => {
+    //  isSwipingRef.current = false;
+    //}, 150);
   }, [queueMode, onQueueEmpty, reShuffleAlbums]);
   return (
     <View style={styles.container}>
@@ -66,7 +73,7 @@ const AlbumCards = ({ albums, reShuffleAlbums, queueMode, onQueueEmpty, onProgre
         <View style={styles.container}>
           <View style={{width: 250, height: 250, position: "relative"}}>
             {cards.map((album, index) => {
-              if(index < 6) return<CardItem key={album.title + album.artist + (album.sideLetter ?? "")} album={album} index={index} shuffleCards={shuffleCards} />;})}
+              if(index < 6) return<CardItem key={album.title + album.artist + (album.sideLetter ?? "")} album={album} index={index} shuffleCards={shuffleCards} isTop={index === 0} activeCardId={activCardId}/>;})}
           </View>
           <View style={styles.textContainer}>
             {cards.length > 0 && (

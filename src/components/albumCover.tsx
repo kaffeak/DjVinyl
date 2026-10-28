@@ -15,7 +15,7 @@ export default function AlbumCover({ uri }: Props) {
       {loading && (
         <View style={styles.loader}>
           <LottieView
-            source={require("../assets/images/turntable.json")}
+            source={require("../../assets/images/turntable.json")}
             autoPlay={true}
             loop={true}
             style={{ width: 80, height: 80 }}

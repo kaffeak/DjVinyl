@@ -15,6 +15,8 @@ import {
 } from "react-native";
 import {LinearGradient} from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
+import type {Album} from "@/src/types/album";
+import {parseTrack} from "@/src/utils/tracks";
 
 type AndroidColors = {
   average?: string;
@@ -27,17 +29,6 @@ type AndroidColors = {
   darkMuted?: string;
   platform: "android" | string;
 };
-
-export interface Album {
-  title: string;
-  artist: string;
-  url: string;
-  sides: number;
-  genres: string[],
-  trackList: string[],
-  sideLetter?: string,
-}
-
 interface Props {
   visible: boolean;
   album: Album | null;
@@ -152,19 +143,6 @@ export default function AlbumInfoModal({
   const scale = anim.interpolate({ inputRange: [0, 1], outputRange: [0.98, 1] });
 
   if (!album) return null;
-
-  const parseTrack = (track: string) => {
-    const index = track.lastIndexOf(" - ");
-
-    if (index === -1) {
-      return { title: track, duration: "" };
-    }
-
-    return {
-      title: track.slice(0, index),
-      duration: track.slice(index + 3),
-    };
-  };
 
   return (
     <Modal visible={visible} transparent animationType="none" onRequestClose={onClose}>

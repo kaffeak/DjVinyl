@@ -3,24 +3,16 @@ import { LinearGradient } from "expo-linear-gradient";
 import {Databases, Client, ID, Query} from "appwrite";
 import {useState, useEffect, useRef} from "react";
 import {Ionicons} from "@expo/vector-icons";
-import SettingsModal from "@/app/settingsModal";
+import SettingsModal from "@/src/components/settingsModal";
 import * as Haptics from "expo-haptics";
-import LoadingScreen from "@/app/loadingScreen";
+import LoadingScreen from "@/src/components/loadingScreen";
 import LottieView from "lottie-react-native";
-import ShowLibrary from "@/app/library";
+import ShowLibrary from "@/src/components/library";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import AlbumCards from "@/app/AlbumCards";
+import AlbumCards from "@/src/components/AlbumCards";
 import {GestureHandlerRootView} from "react-native-gesture-handler";
-
-export interface Album {
-  title: string;
-  artist: string;
-  url: string;
-  sides: number;
-  genres: string[],
-  trackList: string[],
-  sideLetter?: string;
-}
+import type {Album} from "@/src/types/album";
+import {buildSidesList, shuffleArray} from "@/src/utils/albums";
 
 const client = new Client()
   .setProject(process.env.EXPO_PUBLIC_APPWRITE_PROJECT_ID ?? "")
@@ -30,14 +22,6 @@ export const db = new Databases(client);
 const LAST_LIBRARY_KEY = "lastLibrary";
 const LAST_QUEUE = "lastQueue";
 
-const shuffleArray = <T,>(array: T[]): T[] => {
-  const copy = [...array];
-  for (let i = copy.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [copy[i], copy[j]] = [copy[j], copy[i]];
-  }
-  return copy;
-};
 
 export default function Index() {
   const [owner, setOwner] = useState("");
@@ -151,16 +135,6 @@ export default function Index() {
       prev.includes(thisGenre)
         ? prev.filter((g) => g !== thisGenre)
         : [...prev, thisGenre]
-    );
-  };
-
-  const buildSidesList = (albums: any[]) => {
-    return albums.flatMap((album) =>
-      Array.from({ length: album.sides }, (_, i) => ({
-        ...album,
-        side: i + 1,
-        sideLetter: String.fromCharCode(65 + i), // 65 = "A"
-      }))
     );
   };
 

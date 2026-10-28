@@ -1,8 +1,8 @@
-import {Album} from "@/app/library";
+import type {Album} from "@/src/types/album";
 import {memo, useCallback} from "react";
 import * as Haptics from "expo-haptics";
 import {TouchableOpacity, View, Text} from "react-native";
-import AlbumCover from "@/app/albumCover";
+import AlbumCover from "@/src/components/albumCover";
 
 type Props = {
   album: Album;

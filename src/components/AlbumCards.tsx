@@ -1,17 +1,10 @@
 import React, {useCallback, useEffect, useRef, useState} from "react";
 import {Pressable, StyleSheet, Text, View} from "react-native";
-import CardItem from "@/app/CardItem";
+import CardItem from "@/src/components/CardItem";
 import {scheduleOnRN} from "react-native-worklets";
-import ShuffleButton from "@/app/shuffleButton";
-export interface Album {
-  title: string;
-  artist: string;
-  url: string;
-  sides: number;
-  genres: string[],
-  trackList: string[],
-  sideLetter?: string,
-}
+import ShuffleButton from "@/src/components/shuffleButton";
+import type {Album} from "@/src/types/album";
+
 type Props = {
   albums: Album[],
   reShuffleAlbums: (bool: boolean) => void,

@@ -1,6 +1,5 @@
 import {Pressable, Text, TextInput, View, Modal} from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
-import {Databases, Client, ID, Query} from "appwrite";
 import {useState, useEffect, useRef} from "react";
 import {Ionicons} from "@expo/vector-icons";
 import SettingsModal from "@/src/components/settingsModal";
@@ -13,12 +12,15 @@ import AlbumCards from "@/src/components/AlbumCards";
 import {GestureHandlerRootView} from "react-native-gesture-handler";
 import type {Album} from "@/src/types/album";
 import {buildSidesList, shuffleArray} from "@/src/utils/albums";
+import {db} from "@/src/services/appwrite";
+import {
+  listAlbums,
+  createAlbum,
+  updateAlbum,
+  deleteAlbum,
+} from "@/src/services/albumRepository";
 
-const client = new Client()
-  .setProject(process.env.EXPO_PUBLIC_APPWRITE_PROJECT_ID ?? "")
-  .setEndpoint(process.env.EXPO_PUBLIC_APPWRITE_ENDPOINT ?? "");
 
-export const db = new Databases(client);
 const LAST_LIBRARY_KEY = "lastLibrary";
 const LAST_QUEUE = "lastQueue";
 
@@ -297,21 +299,19 @@ export default function Index() {
         normalizeUrl(frontImage.image);
 
       console.log("Using cover art URL:", imageUrl);
-      setAlbums(prev => {
-        let idToUpdate: string | null = null;
-        const updated = prev.map(item=> {
-          if( item.title === album && item.artist === artist){
-            idToUpdate = item.$id;
-            return { ...item, url: imageUrl, tracklist: tracklist};
-          }
-          return item;
-        });
-        if(idToUpdate !== null){
-          updateDb(idToUpdate, imageUrl, undefined, tracklist).catch(err => console.error("Failed to update DB:", err));
+      const albumToUpdate = albums.find((a) => a.title === album && a.artist === artist);
+
+      if (albumToUpdate) {
+        try {
+          const coverToSave = imageUrl ?? "";
+
+          await updateAlbum(owner, albumToUpdate.$id, {url: coverToSave, trackList: tracklist,});
+
+          setAlbums((prev) => prev.map((item) => item.$id === albumToUpdate.$id ? {...item, url: coverToSave, trackList: tracklist,} : item));
+        } catch (error) {
+          console.error("Failed to cache album metadata: ", error);
         }
-        console.log(JSON.stringify(updated, null, 2));
-        return updated;
-      })
+      }
 
 
       setCurrentAlbum({
@@ -334,25 +334,39 @@ export default function Index() {
   };
 
   useEffect(() => {
-    db.listDocuments(process.env.EXPO_PUBLIC_APPWRITE_DATABASE_ID ?? "", owner ?? "", [Query.limit(1000)])
-      .then((response) => {
-        const docs = response.documents;
-        setAlbums(docs);
-        const cleanedAlbums: Album[] = docs.map(album => ({
-          title: album.title,
-          artist: album.artist,
-          url: album.url,
-          sides: album.sides,
-          genres: album.genres,
-          trackList: album.trackList,
-        }))
-        if (!isSwitchingLibrary.current){
-          setShuffledAlbums(shuffleArray(cleanedAlbums));
-          setAlbumIndex(0);
-        }
-        else isSwitchingLibrary.current = false;
-      })
-      .catch((error) => console.error(error));
+    if (!owner) return;
+
+    let cancelled = false;
+
+    listAlbums(owner).then((docs) => {
+      if (cancelled) return;
+
+      setAlbums(docs);
+
+      const cleanedAlbums: Album[] = docs.map((album) => ({
+        title: album.title,
+        artist: album.artist,
+        url: album.url,
+        sides: album.sides,
+        genres: album.genres,
+        trackList: album.trackList,
+      }));
+
+      if (!isSwitchingLibrary.current) {
+        setShuffledAlbums(shuffleArray(cleanedAlbums));
+        setAlbumIndex(0);
+      } else {
+        isSwitchingLibrary.current = false;
+      }
+    }).catch((error) => {
+      if (!cancelled){
+        console.error("Faild to load albums: ", error);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    }
   }, [owner]);
 
   useEffect(() => {
@@ -400,127 +414,60 @@ export default function Index() {
     setAlbumIndex(0);
   };
 
-  const sendToDb = async (genreList: string[]) => {
-    const newId = ID.unique();
-    try {
-      const response = await db.createDocument(
-        process.env.EXPO_PUBLIC_APPWRITE_DATABASE_ID ?? "",
-        owner ?? "",
-        newId,
-        {
-          title,
-          sides,
-          artist,
-          genres: genreList,
-        }
-      );
-      console.log("Created doc:", response);
-      return response;
-    } catch (error) {
-      console.error("Error creating document: ", error);
-      throw error;
-    }
-  }
-
-  const updateDb = async (id: string, newUrl?: string, newGenres?: string[], tracklist?: string[]): Promise<void> => {
-    const data: {
-      url?: string;
-      genres?: string[];
-      trackList?: string[];
-    } = {};
-
-    if(typeof newUrl !== "undefined") {
-      data.url = newUrl;
-    }
-    if(typeof newGenres !== "undefined") {
-      data.genres = newGenres;
-    }
-    if(typeof tracklist !== "undefined") {
-      data.trackList = tracklist;
-    }
-    console.log("data in updateDB: ", data);
-    if(Object.keys(data).length === 0) {
-      console.log("updateDb called with no changes; skipping update.");
-      return;
-    }
-    try {
-      await db.updateDocument(
-        process.env.EXPO_PUBLIC_APPWRITE_DATABASE_ID!,
-        owner!,
-        id,
-        data
-      )
-    } catch (err) {
-      console.error("updateDb error:", err);
-      throw err;
-    }
-
-  }
-
   const handleUpdateGenres = async (albumTitle: string, albumArtist: string, newGenres: string[]) => {
-    setAlbums(prev => {
-      let idToUpdate: string | null = null;
-      const updated = prev.map(item => {
-        if (item.title === albumTitle && item.artist === albumArtist) {
-          idToUpdate = item.$id;
-          return {...item, genres: newGenres};
-        }
-        return item;
-      });
-      if (idToUpdate !== null) {
-        try {
-          updateDb(idToUpdate, undefined, newGenres);
-        } catch (err) {
-          console.error("Failed to update genres in DB", err);
-        }
-      }
-      return updated;
-    })
+    const album = albums.find((a) => a.title === albumTitle && a.artist === albumArtist);
+
+    if (!album) return;
+
+    try {
+      await updateAlbum(owner, album.$id, {genres: newGenres});
+
+      setAlbums((prev) => prev.map((item) => item.$id === album.$id ? { ...item, genres: newGenres } : item));
+    } catch (error) {
+      console.error("Error updating Genres: ", error);
+    }
   }
 
   const addAlbum = async () => {
+    if (!owner || !title.trim() || !artist.trim() || sides === null || sides < 1) {
+      console.warn("Invalid album information");
+      return;
+    }
+
     const genreList = newGenres.toLowerCase().split(",");
-    const response = await sendToDb(genreList);
-    setAlbums(prev => [...prev, response]);
-    console.log("Adding album:", {title, artist, sides, genreList});
-    setTitle("");
-    setArtist("");
-    setSides(null);
-    setNewGenres("");
+
+    try {
+      const newAlbum = await createAlbum(owner, {
+        title,
+        artist,
+        sides,
+        genres: genreList,
+      });
+
+      setAlbums((prev) => [...prev, newAlbum]);
+
+      setTitle("");
+      setArtist("");
+      setSides(null);
+      setNewGenres("");
+    } catch (error) {
+      console.error("Failed to create Album: ", error);
+    }
   };
 
-  const removeAlbum = async (albumToRemove: {
-    title: string;
-    artist: string;
-    url: string;
-    sides: number;
-    genres: string[],
-    sideLetter?: string;
-  }) => {
-    let idToRemove: string | null = null;
-    setAlbums(prev => {
-      const updated = prev.filter(item => {
-        const match = item.title === albumToRemove.title && item.artist === albumToRemove.artist
-        if(match) {
-          idToRemove = item.$id;
-          return false;
-        }
-        return true;
-      });
-      return updated;
-    })
-    if (idToRemove !== null) {
-      try {
-        await db.deleteDocument(
-          process.env.EXPO_PUBLIC_APPWRITE_DATABASE_ID!,
-          owner!,
-          idToRemove
-        )
-      } catch (err){
-        console.log("Error when trying to remove album, ", err)
-      }
+  const removeAlbum = async (albumToRemove: Album) => {
+    const album = albums.find((a) => a.title === albumToRemove.title && a.artist === albumToRemove.artist);
+
+    if (!album) return;
+
+    try {
+      await deleteAlbum(owner, album.$id);
+
+      setAlbums((prev) => prev.filter((item) => item.$id !== album.$id));
+    } catch (error) {
+      console.error("Failed to remove album: ", error);
     }
-  }
+  };
 
   const queueAlbum = (album: Album) => {
     Haptics.selectionAsync();

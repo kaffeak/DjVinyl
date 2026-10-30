@@ -7,13 +7,14 @@ import type {Album} from "@/src/types/album";
 
 type Props = {
   albums: Album[],
+  latestAlbums: Album[],
   reShuffleAlbums: (bool: boolean) => void,
   queueMode: boolean,
   onQueueEmpty: () => void,
   onProgressChange?: (cards: Album[]) => void,
 }
 
-const AlbumCards = ({ albums, reShuffleAlbums, queueMode, onQueueEmpty, onProgressChange }: Props) => {
+const AlbumCards = ({ albums, latestAlbums, reShuffleAlbums, queueMode, onQueueEmpty, onProgressChange }: Props) => {
   const [cards, setCards] = useState<Album[]>(albums);
   const activCardId = useRef<string | null>(null);
 
@@ -56,6 +57,7 @@ const AlbumCards = ({ albums, reShuffleAlbums, queueMode, onQueueEmpty, onProgre
     //  isSwipingRef.current = false;
     //}, 150);
   }, [queueMode, onQueueEmpty, reShuffleAlbums]);
+
   return (
     <View style={styles.container}>
       {queueMode && albums.length === 0 ? (
@@ -66,7 +68,23 @@ const AlbumCards = ({ albums, reShuffleAlbums, queueMode, onQueueEmpty, onProgre
         <View style={styles.container}>
           <View style={{width: 250, height: 250, position: "relative"}}>
             {cards.map((album, index) => {
-              if(index < 6) return<CardItem key={album.title + album.artist + (album.sideLetter ?? "")} album={album} index={index} shuffleCards={shuffleCards} isTop={index === 0} activeCardId={activCardId}/>;})}
+              if(index >= 6) return null
+
+              const updatedAlbum = album.$id ? latestAlbums.find((a) => a.$id === album.$id) : undefined;
+              const displaydAlbum = updatedAlbum ? {
+                ...album,
+                url: updatedAlbum.url,
+                trackList: updatedAlbum.trackList,
+              } : album;
+              return <CardItem
+                key={`${album.$id ?? `${album.title}-${album.artist}`}-${album.sideLetter ?? ""}`}
+                album={displaydAlbum}
+                index={index}
+                shuffleCards={shuffleCards}
+                isTop={index === 0}
+                activeCardId={activCardId}
+              />
+            })}
           </View>
           <View style={styles.textContainer}>
             {cards.length > 0 && (

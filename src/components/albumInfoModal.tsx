@@ -58,6 +58,7 @@ export default function AlbumInfoModal({
   const [textColor, setTextColor] = useState<string>(invert("#1e293b"))
   const anim = useRef(new Animated.Value(0)).current;
   const [currentPage, setCurrentPage] = useState(0);
+  const [imageFailed, setImageFailed] = useState(false);
 
   const pagerRef = useRef<PagerView>(null);
 
@@ -65,6 +66,11 @@ export default function AlbumInfoModal({
 
   const [editGenres, setEditGenres] = useState<boolean>(false);
   const [newGenre, setNewGenre] = useState<string>("");
+
+  useEffect(() => {
+    setImageFailed(false)
+  }, [album?.url]);
+
   useEffect(() => {
     if(!visible) {
       setEditGenres(false);
@@ -83,16 +89,35 @@ export default function AlbumInfoModal({
   }, [visible, anim]);
 
   useEffect(() => {
-    if(!album?.url) return;
-    (async () => {
-      const returnColors = await getColors(album.url, {
-        fallback: '#121212',
-        cache: true,
-        key: album.url,
-      })
-      setColors(returnColors)
-    })();
-  }, [album]);
+    let cancelled = false;
+
+    setColors(null);
+    setTop("#1e293b");
+    setBottom("#0f172a");
+    setTextColor(invert("#1e293b"));
+
+    const imageUrl = album?.url?.trim();
+
+    if (!visible || !imageUrl) return;
+
+    const loadColors = async () => {
+      try {
+        const result = await getColors(imageUrl, {fallback: "#121212", cache: true, key:imageUrl});
+
+        if (!cancelled) {
+          setColors(result);
+        }
+      } catch (error) {
+        console.warn("Could not extract album colors:",error);
+      }
+    }
+
+    void loadColors();
+
+    return () => {
+      cancelled = true;
+    }
+  }, [album?.url, visible]);
 
   useEffect(() => {
     if (!colors) return;
@@ -166,7 +191,25 @@ export default function AlbumInfoModal({
               },
             ]}
           >
-            <Image source={{ uri: album.url }} style={[styles.image, { width: cardSize, height: cardSize }]} resizeMode="cover" />
+            {album.url?.trim() && !imageFailed ? (
+              <Image
+                source={{ uri: album.url }}
+                style={[styles.image, {width: cardSize, height: cardSize}]}
+                resizeMode={"cover"}
+                />
+            ) : (
+              <View
+                style={{
+                  width: cardSize,
+                  height: cardSize,
+                  backgroundColor: "#1e293b",
+                  justifyContent: "center",
+                  alignItems: "center",
+                }}
+              >
+                <Text style={{color: "#94a3b8", fontSize: 16 }}> No cover available</Text>
+              </View>
+            )}
             {editGenres && (
               <Pressable
                 style={styles.minusBadgeAlbum}

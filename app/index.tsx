@@ -19,6 +19,7 @@ import {
   updateAlbum,
   deleteAlbum,
 } from "@/src/services/albumRepository";
+import {fetchAlbumMetadata} from "@/src/services/musicMetadata";
 
 
 const LAST_LIBRARY_KEY = "lastLibrary";
@@ -59,6 +60,64 @@ export default function Index() {
   const [selectedGenres, setSelectedGenres] = useState<string[]>([]);
   const [allGenres, setAllGenres] = useState<Record<string, number>>({});
   const [isCoverLoading, setIsCoverLoading] = useState(true);
+
+  const metadataInFlight = useRef(new Set<string>());
+  const activeLibraryRef = useRef(owner);
+  activeLibraryRef.current = owner;
+
+  const loadAlbumMetadata = async (album: Album & {$id: string}, libraryId: string) => {
+    const key = `${libraryId}:${album.$id}`;
+
+    if (metadataInFlight.current.has(key)) return;
+
+    const needsCover = !album.url?.trim();
+
+    const needsTracks = !album.trackList?.length || album.trackList.some((track) => track.includes("NaN:NaN"));
+
+    if (!needsCover && !needsTracks) return;
+
+    metadataInFlight.current.add(key);
+
+    try {
+      console.log("[METADATA:START]", album.title);
+
+      const {coverUrl, trackList} = await fetchAlbumMetadata(album.title, album.artist);
+
+      const changes: {
+        url?: string;
+        trackList?: string[];
+      } = {};
+
+      if (needsCover && coverUrl) {
+        changes.url = coverUrl;
+      }
+
+      if (needsTracks && trackList.length > 0) {
+        changes.trackList = trackList;
+      }
+
+      if (Object.keys(changes).length === 0) {
+        console.warn( "[METADATA:EMPTY]", album.title);
+        return;
+      }
+
+      await updateAlbum(libraryId, album.$id, changes);
+
+      if (activeLibraryRef.current === libraryId){
+        setAlbums((prev) => prev.map((item) => item.$id === album.$id ? {...item, ...changes } : item));
+      }
+
+      console.log("[METADATA:SAVED]", {
+        album: album.title,
+        coverFound: !!coverUrl,
+        tracksFound: trackList.length,
+      });
+    } catch (error) {
+      console.error("[METADATA:FAILED]", album.title, error);
+    } finally {
+      metadataInFlight.current.delete(key);
+    }
+  }
 
   const toggleQueueMode = async (current: boolean) => {
     const next = !current;
@@ -140,193 +199,78 @@ export default function Index() {
     );
   };
 
-  const buildStringFromTrackData = (trackData: any) => {
-    if (!trackData?.length || !trackData?.title) return null;
-    return `${trackData.title} - ${Math.floor(trackData.length / 60000)}:${Math.floor((trackData.length % 60000) /1000).toString().padStart(2, "0")}`;
-  }
-
-  const fetchTrackList = async (releaseId: string): Promise<string[]> => {
-    try {
-      const trackUrl = `https://musicbrainz.org/ws/2/release/${releaseId}?inc=recordings&fmt=json`;
-      console.log("Tracklist url: ", trackUrl);
-
-      const trackResponse = await fetch(trackUrl, {
-        headers: {
-          "User-Agent": "DjVinyl/1.0.0 (kaffe.ak46@gmail.com)",
-          "Accept": "application/json",
-        }
-      });
-
-      if (!trackResponse.ok) throw new Error(`Tracklist request failed: ${trackResponse.status}`);
-
-      const trackData = await trackResponse.json();
-      console.log(JSON.stringify(trackData, null, 2));
-      const trackStrings: string[] = [];
-
-      for (const medium of trackData.media ?? []) {
-        for (const track of medium.tracks ?? []) {
-          const str = buildStringFromTrackData(track);
-          console.log(str);
-          if (str) trackStrings.push(str);
-        }
-      }
-
-      return trackStrings;
-    } catch (error) {
-      console.log("Error when fetching tracklist: ", error);
-      return [];
-    }
-  }
-
   const fetchAlbumCover = async (album: string, artist: string) => {
+    const selectedAlbum = shuffledAlbums[albumIndex];
+    console.log("[DECK:SELECTED]", {
+      requestedAlbum: `${album} - ${artist}`,
+      albumIndex,
+      selectedAlbum: selectedAlbum
+        ? `${selectedAlbum.title} - ${selectedAlbum.artist}`
+        : null,
+      cachedUrl: selectedAlbum?.url,
+      cachedTracks: selectedAlbum?.trackList?.length ?? 0,
+    });
+
+    if (!selectedAlbum) return;
+
     setIsCoverLoading(true);
-    if (shuffledAlbums[albumIndex].url !== null) {
-      setCurrentAlbum({title: album, artist, coverUrl: shuffledAlbums[albumIndex].url,sideLetter: shuffleMode === "sides" ? shuffledAlbums[albumIndex].sideLetter : undefined});
-      return;
-    }
+
+    const sideLetter = shuffleMode === "sides" ? selectedAlbum.sideLetter : undefined;
+
     try {
-      const params = new URLSearchParams({
-        query: `release:${album} AND artist:${artist}`,
-        fmt: "json",
-      });
-      const mbUrl = `https://musicbrainz.org/ws/2/release/?${params.toString()}`;
-      console.log("MusicBrainz release search URL:", mbUrl);
+      const hasCachedCover = typeof selectedAlbum.url === "string" && selectedAlbum.url.trim().length > 0;
+      const hasCachedTracks = (selectedAlbum.trackList?.length ?? 0) > 0;
 
-      const mbResponse = await fetch(mbUrl, {
-        headers: {
-          "User-Agent": "DjVinyl/1.0.0 (kaffe.ak46@gmail.com)",
-          "Accept": "application/json",
-        },
-      });
-
-      if (!mbResponse.ok) {
-        throw new Error(`MusicBrainz request failed: ${mbResponse.status}`);
-      }
-
-      const data = await mbResponse.json();
-
-      if (!data.releases?.length) {
-        console.log("No release found");
+      if (hasCachedCover && hasCachedTracks) {
         setCurrentAlbum({
           title: album,
           artist,
-          coverUrl: "",
-          sideLetter: shuffleMode === "sides" ? shuffledAlbums[albumIndex].sideLetter : undefined,
+          coverUrl: selectedAlbum.url,
+          sideLetter: shuffleMode === "sides" ? selectedAlbum.sideLetter : undefined,
         });
-        return;
-      }
-      const release = data.releases[0];
-      const releaseId: string = release.id;
-      const releaseGroupId: string | undefined = release["release-group"]?.id;
 
-      console.log("First release:", release);
-      console.log("Using releaseId:", releaseId);
-      console.log("Using releaseGroupId:", releaseGroupId);
-
-      const tracklist = await fetchTrackList(releaseId);
-
-      const normalizeUrl = (url?: string) =>
-        url && url.startsWith("http://")
-          ? url.replace("http://", "https://")
-          : url;
-
-      const userAgentHeaders = {
-        "User-Agent": "DjVinyl/1.0.0 (kaffe.ak46@gmail.com)",
-        "Accept": "application/json",
-      };
-
-      let coverData: any | null = null;
-
-      let coverUrl = `https://coverartarchive.org/release/${releaseId}/`;
-      console.log("CoverArt URL (release):", coverUrl);
-
-      let coverResponse = await fetch(coverUrl, { headers: userAgentHeaders });
-      console.log("CoverArt status (release):", coverResponse.status, coverResponse.url);
-
-      if (coverResponse.ok) {
-        coverData = await coverResponse.json();
-      } else if (coverResponse.status === 404 && releaseGroupId) {
-        // 4. Fallback: try release-group if release has no art
-        const rgUrl = `https://coverartarchive.org/release-group/${releaseGroupId}/`;
-        console.log("No art on release, trying release-group URL:", rgUrl);
-
-        coverResponse = await fetch(rgUrl, { headers: userAgentHeaders });
-        console.log(
-          "CoverArt status (release-group):",
-          coverResponse.status,
-          coverResponse.url
-        );
-
-        if (coverResponse.ok) {
-          coverData = await coverResponse.json();
-        } else if (coverResponse.status !== 404) {
-          const body = await coverResponse.text();
-          console.log(
-            "CoverArt error body (release-group, first 200 chars):",
-            body.slice(0, 200)
-          );
-          throw new Error(
-            `CoverArt release-group request failed: ${coverResponse.status}`
-          );
-        }
-      } else if (!coverResponse.ok) {
-        // Some other error (500, etc.)
-        const body = await coverResponse.text();
-        console.log(
-          "CoverArt error body (release, first 200 chars):",
-          body.slice(0, 200)
-        );
-        throw new Error(`CoverArt release request failed: ${coverResponse.status}`);
-      }
-
-      if (!coverData || !coverData.images?.length) {
-        console.log("No cover art images found");
-        setCurrentAlbum({
-          title: album,
-          artist,
-          coverUrl: "",
-          sideLetter: shuffleMode === "sides" ? shuffledAlbums[albumIndex].sideLetter : undefined,
-        });
         return;
       }
 
-      const images: any[] = coverData.images;
-      const frontImage = images.find((img) => img.front) ?? images[0];
+      const {coverUrl, trackList } = await fetchAlbumMetadata(album, artist);
 
-      const imageUrl =
-        normalizeUrl(frontImage.thumbnails?.["500"]) ||
-        normalizeUrl(frontImage.thumbnails?.["1200"]) ||
-        normalizeUrl(frontImage.image);
+      const savedCoverUrl = coverUrl ?? "";
 
-      console.log("Using cover art URL:", imageUrl);
-      const albumToUpdate = albums.find((a) => a.title === album && a.artist === artist);
+      const storedAlbum = albums.find(
+        (a) => a.title === album && a.artist === artist
+      );
 
-      if (albumToUpdate) {
+      if (storedAlbum?.$id && owner) {
         try {
-          const coverToSave = imageUrl ?? "";
+          console.log("[CACHE:SAVE]", {
+            album,
+            documentId: storedAlbum?.$id,
+            coverUrl,
+            trackCount: trackList.length,
+          })
+          await updateAlbum(owner, storedAlbum.$id, {url: savedCoverUrl, trackList});
+          console.log("[CACHE:SAVED]", album);
 
-          await updateAlbum(owner, albumToUpdate.$id, {url: coverToSave, trackList: tracklist,});
-
-          setAlbums((prev) => prev.map((item) => item.$id === albumToUpdate.$id ? {...item, url: coverToSave, trackList: tracklist,} : item));
+          setAlbums((prev) => prev.map((item) => item.$id === storedAlbum.$id ? {...item, url: savedCoverUrl, trackList} : item));
         } catch (error) {
-          console.error("Failed to cache album metadata: ", error);
+          console.error("Failed to cache album metadata:", error);
         }
       }
-
 
       setCurrentAlbum({
         title: album,
         artist,
-        coverUrl: imageUrl ?? "",
-        sideLetter: shuffleMode === "sides" ? shuffledAlbums[albumIndex].sideLetter : undefined,
+        coverUrl: savedCoverUrl,
+        sideLetter,
       });
-    } catch (err) {
-      console.error("Error fetching album cover:", err);
+    } catch (error) {
+      console.error("Failed to retrieve album metadata:",error);
+
       setCurrentAlbum({
         title: album,
         artist,
         coverUrl: "",
-        sideLetter: shuffleMode === "sides" ? shuffledAlbums[albumIndex].sideLetter : undefined,
+        sideLetter,
       });
     } finally {
       setIsCoverLoading(false);
@@ -344,12 +288,13 @@ export default function Index() {
       setAlbums(docs);
 
       const cleanedAlbums: Album[] = docs.map((album) => ({
+        $id: album.$id,
         title: album.title,
         artist: album.artist,
-        url: album.url,
+        url: album.url ?? "",
         sides: album.sides,
-        genres: album.genres,
-        trackList: album.trackList,
+        genres: album.genres ?? [],
+        trackList: album.trackList ?? [],
       }));
 
       if (!isSwitchingLibrary.current) {
@@ -369,20 +314,30 @@ export default function Index() {
     }
   }, [owner]);
 
+  const deckStructureKey = JSON.stringify(
+    albums.map((album) => ({
+      id: album.$id,
+      sides: album.sides,
+      genres: album.genres,
+    }))
+  );
+
   useEffect(() => {
     reshuffleAlbums(queueMode);
+  }, [deckStructureKey, selectedGenres, shuffleMode]);
+
+  useEffect(() => {
     const genreCount: Record<string, number> = {};
+
     albums.forEach((album) => {
       if (Array.isArray(album.genres)) {
-        album.genres.forEach((g: string) => {
-          genreCount[g] = (genreCount[g] || 0) + 1;
+        album.genres.forEach((genre: string) => {
+          genreCount[genre] = (genreCount[genre] ?? 0) + 1;
         });
-      } else if (typeof album.genres === "string"){
-        genreCount[album.genres] = (genreCount[album.genres] || 0) + 1;
       }
-    })
-    setAllGenres(genreCount)
-  }, [albums]);
+    });
+    setAllGenres(genreCount);
+  }, []);
 
   useEffect(() => {
     if (shuffledAlbums.length > 0 && albumIndex < shuffledAlbums.length) {
@@ -437,14 +392,32 @@ export default function Index() {
     const genreList = newGenres.toLowerCase().split(",");
 
     try {
-      const newAlbum = await createAlbum(owner, {
+      const libraryId = owner;
+
+      const newAlbum = await createAlbum(libraryId, {
         title,
         artist,
         sides,
         genres: genreList,
       });
 
-      setAlbums((prev) => [...prev, newAlbum]);
+      const createdRecord: Album & { $id: string } = {
+        $id: newAlbum.$id,
+        title: title,
+        artist: artist,
+        sides: sides,
+        genres: genreList,
+        url: typeof newAlbum.url === "string"
+          ? newAlbum.url
+          : "",
+        trackList: Array.isArray(newAlbum.trackList)
+          ? newAlbum.trackList
+          : [],
+      };
+
+      setAlbums((prev) => [...prev, createdRecord]);
+
+      void loadAlbumMetadata(createdRecord, libraryId);
 
       setTitle("");
       setArtist("");
@@ -547,6 +520,7 @@ export default function Index() {
           <View className="flex-1 items-center justify-center">
             <AlbumCards
               albums={shuffledAlbums}
+              latestAlbums={albums}
               reShuffleAlbums={reshuffleAlbums}
               queueMode={queueMode}
               onQueueEmpty={() => setShuffledAlbums([])}

@@ -10,3 +10,5 @@ export interface Album {
 }
 
 export type ShuffleMode = "albums" | "sides";
+
+export type NewAlbumData = Pick<Album, "title" | "artist" | "sides" | "genres" >;

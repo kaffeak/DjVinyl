@@ -1,12 +1,6 @@
 import {ID, Query} from "appwrite";
 import {db, databaseId} from "@/src/services/appwrite";
-
-export type NewAlbumData = {
-  title: string;
-  artist: string;
-  sides: number;
-  genres: string[];
-};
+import {NewAlbumData} from "@/src/types/album";
 
 export type AlbumUpdates = {
   url?: string;

@@ -10,7 +10,7 @@ import ShowLibrary from "@/src/components/library";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import AlbumCards from "@/src/components/AlbumCards";
 import {GestureHandlerRootView} from "react-native-gesture-handler";
-import type {Album} from "@/src/types/album";
+import type {Album, NewAlbumData} from "@/src/types/album";
 import {buildSidesList, shuffleArray} from "@/src/utils/albums";
 import {db} from "@/src/services/appwrite";
 import {
@@ -20,22 +20,28 @@ import {
   deleteAlbum,
 } from "@/src/services/albumRepository";
 import {fetchAlbumMetadata} from "@/src/services/musicMetadata";
+import {isArray} from "node:util";
+import AddAlbumModal from "@/src/components/AddAlbumModal";
+import {getMetadataNeeds} from "@/src/utils/albumMetadata";
 
 
 const LAST_LIBRARY_KEY = "lastLibrary";
 const LAST_QUEUE = "lastQueue";
 
+const MAX_METADATA_ATTEMPTS = 2;
+const METADATA_COOLDOWN_MS = 5 * 60 * 1000;
+const MAX_AUTO_RETRIES_PER_LOAD = 3;
+
+type MetadataRetryInfo = {
+  attempts: number;
+  nextAllowedAt: number;
+}
 
 export default function Index() {
   const [owner, setOwner] = useState("");
   const [isReady, setIsReady] = useState(false);
 
   const [albumMenu, setAlbumMenu] = useState(false);
-  const [title, setTitle] = useState("");
-  const [artist, setArtist] = useState("");
-  const [sides, setSides] = useState<number | null>(null);
-  const [genres, setGenres] = useState<string[] | null>(null);
-  const [newGenres, setNewGenres] = useState("");
 
   const [albums, setAlbums] = useState<any[]>([]);
   const [shuffledAlbums, setShuffledAlbums] = useState<Album[]>([]);
@@ -62,19 +68,41 @@ export default function Index() {
   const [isCoverLoading, setIsCoverLoading] = useState(true);
 
   const metadataInFlight = useRef(new Set<string>());
+  const metadataRetryInfo = useRef(new Map<string, MetadataRetryInfo>());
   const activeLibraryRef = useRef(owner);
   activeLibraryRef.current = owner;
 
-  const loadAlbumMetadata = async (album: Album & {$id: string}, libraryId: string) => {
+  const canLoadMetadata = (album: Album & {$id: string}, libraryId: string): boolean => {
+    const {needsCover, needsTracks} = getMetadataNeeds(album);
+
+    if (!needsCover && !needsTracks) return false;
+
     const key = `${libraryId}:${album.$id}`;
 
-    if (metadataInFlight.current.has(key)) return;
+    if (metadataInFlight.current.has(key)) return false;
 
-    const needsCover = !album.url?.trim();
+    const retryInfo = metadataRetryInfo.current.get(key);
 
-    const needsTracks = !album.trackList?.length || album.trackList.some((track) => track.includes("NaN:NaN"));
+    if (!retryInfo) return true;
 
-    if (!needsCover && !needsTracks) return;
+    if (retryInfo.attempts >= MAX_METADATA_ATTEMPTS) return false;
+
+    return true;
+  };
+
+  const loadAlbumMetadata = async (album: Album & {$id: string}, libraryId: string) => {
+    if (!canLoadMetadata(album, libraryId)) return;
+
+    const key = `${libraryId}:${album.$id}`;
+
+    const { needsCover, needsTracks } = getMetadataNeeds(album);
+
+    const previous = metadataRetryInfo.current.get(key);
+
+    metadataRetryInfo.current.set(key, {
+      attempts: (previous?.attempts ?? 0) + 1,
+      nextAllowedAt: 0,
+    });
 
     metadataInFlight.current.add(key);
 
@@ -115,6 +143,14 @@ export default function Index() {
     } catch (error) {
       console.error("[METADATA:FAILED]", album.title, error);
     } finally {
+      const retryInfo = metadataRetryInfo.current.get(key);
+
+      if (retryInfo) {
+        metadataRetryInfo.current.set(key, {
+          ...retryInfo,
+          nextAllowedAt: Date.now() + METADATA_COOLDOWN_MS,
+        });
+      }
       metadataInFlight.current.delete(key);
     }
   }
@@ -199,84 +235,6 @@ export default function Index() {
     );
   };
 
-  const fetchAlbumCover = async (album: string, artist: string) => {
-    const selectedAlbum = shuffledAlbums[albumIndex];
-    console.log("[DECK:SELECTED]", {
-      requestedAlbum: `${album} - ${artist}`,
-      albumIndex,
-      selectedAlbum: selectedAlbum
-        ? `${selectedAlbum.title} - ${selectedAlbum.artist}`
-        : null,
-      cachedUrl: selectedAlbum?.url,
-      cachedTracks: selectedAlbum?.trackList?.length ?? 0,
-    });
-
-    if (!selectedAlbum) return;
-
-    setIsCoverLoading(true);
-
-    const sideLetter = shuffleMode === "sides" ? selectedAlbum.sideLetter : undefined;
-
-    try {
-      const hasCachedCover = typeof selectedAlbum.url === "string" && selectedAlbum.url.trim().length > 0;
-      const hasCachedTracks = (selectedAlbum.trackList?.length ?? 0) > 0;
-
-      if (hasCachedCover && hasCachedTracks) {
-        setCurrentAlbum({
-          title: album,
-          artist,
-          coverUrl: selectedAlbum.url,
-          sideLetter: shuffleMode === "sides" ? selectedAlbum.sideLetter : undefined,
-        });
-
-        return;
-      }
-
-      const {coverUrl, trackList } = await fetchAlbumMetadata(album, artist);
-
-      const savedCoverUrl = coverUrl ?? "";
-
-      const storedAlbum = albums.find(
-        (a) => a.title === album && a.artist === artist
-      );
-
-      if (storedAlbum?.$id && owner) {
-        try {
-          console.log("[CACHE:SAVE]", {
-            album,
-            documentId: storedAlbum?.$id,
-            coverUrl,
-            trackCount: trackList.length,
-          })
-          await updateAlbum(owner, storedAlbum.$id, {url: savedCoverUrl, trackList});
-          console.log("[CACHE:SAVED]", album);
-
-          setAlbums((prev) => prev.map((item) => item.$id === storedAlbum.$id ? {...item, url: savedCoverUrl, trackList} : item));
-        } catch (error) {
-          console.error("Failed to cache album metadata:", error);
-        }
-      }
-
-      setCurrentAlbum({
-        title: album,
-        artist,
-        coverUrl: savedCoverUrl,
-        sideLetter,
-      });
-    } catch (error) {
-      console.error("Failed to retrieve album metadata:",error);
-
-      setCurrentAlbum({
-        title: album,
-        artist,
-        coverUrl: "",
-        sideLetter,
-      });
-    } finally {
-      setIsCoverLoading(false);
-    }
-  };
-
   useEffect(() => {
     if (!owner) return;
 
@@ -287,7 +245,7 @@ export default function Index() {
 
       setAlbums(docs);
 
-      const cleanedAlbums: Album[] = docs.map((album) => ({
+      const cleanedAlbums: (Album & {$id: string})[] = docs.map((album) => ({
         $id: album.$id,
         title: album.title,
         artist: album.artist,
@@ -302,6 +260,16 @@ export default function Index() {
         setAlbumIndex(0);
       } else {
         isSwitchingLibrary.current = false;
+      }
+
+      const albumsToRetry = cleanedAlbums.filter((album) => canLoadMetadata(album, owner)).slice(0, MAX_AUTO_RETRIES_PER_LOAD);
+      console.log("[METADATA:AUTO-RETRY]", {
+        libraryId: owner,
+        albumsFound: albumsToRetry.length,
+      });
+
+      for (const album of albumsToRetry) {
+        void loadAlbumMetadata(album, owner);
       }
     }).catch((error) => {
       if (!cancelled){
@@ -337,18 +305,7 @@ export default function Index() {
       }
     });
     setAllGenres(genreCount);
-  }, []);
-
-  useEffect(() => {
-    if (shuffledAlbums.length > 0 && albumIndex < shuffledAlbums.length) {
-      const album = shuffledAlbums[albumIndex];
-      if (album?.title && album?.artist) {
-        fetchAlbumCover(album.title, album.artist);
-      } else {
-        console.warn("Invalid album data at index", albumIndex);
-      }
-    }
-  }, [albumIndex, shuffledAlbums]);
+  }, [albums]);
 
   const reshuffleAlbums = (queue: boolean) => {
     if(queue) return;
@@ -383,48 +340,35 @@ export default function Index() {
     }
   }
 
-  const addAlbum = async () => {
-    if (!owner || !title.trim() || !artist.trim() || sides === null || sides < 1) {
-      console.warn("Invalid album information");
-      return;
+  const addAlbum = async (data: NewAlbumData): Promise<boolean> => {
+    if (!owner) {
+      console.warn("No library selected");
+      return false;
     }
-
-    const genreList = newGenres.toLowerCase().split(",");
 
     try {
       const libraryId = owner;
 
-      const newAlbum = await createAlbum(libraryId, {
-        title,
-        artist,
-        sides,
-        genres: genreList,
-      });
+      const newAlbum = await createAlbum(libraryId, data);
 
-      const createdRecord: Album & { $id: string } = {
+      const createRecord: Album & {$id: string} = {
         $id: newAlbum.$id,
-        title: title,
-        artist: artist,
-        sides: sides,
-        genres: genreList,
-        url: typeof newAlbum.url === "string"
-          ? newAlbum.url
-          : "",
-        trackList: Array.isArray(newAlbum.trackList)
-          ? newAlbum.trackList
-          : [],
+        title: data.title,
+        artist: data.artist,
+        sides: data.sides,
+        genres: data.genres,
+        url: typeof newAlbum.url === "string" ? newAlbum.url : "",
+        trackList: Array.isArray(newAlbum.trackList) ? newAlbum.trackList : [],
       };
 
-      setAlbums((prev) => [...prev, createdRecord]);
+      setAlbums((prev) => [...prev, createRecord]);
 
-      void loadAlbumMetadata(createdRecord, libraryId);
+      void loadAlbumMetadata(createRecord, libraryId);
 
-      setTitle("");
-      setArtist("");
-      setSides(null);
-      setNewGenres("");
+      return true;
     } catch (error) {
-      console.error("Failed to create Album: ", error);
+      console.error("Failed to create album: ", error);
+      return false;
     }
   };
 
@@ -445,11 +389,6 @@ export default function Index() {
   const queueAlbum = (album: Album) => {
     Haptics.selectionAsync();
     setShuffledAlbums((prev) => [...prev, album]);
-  }
-
-  const handleSetSides = (input: string) => {
-    const parsed = parseInt(input, 10);
-    setSides(isNaN(parsed) ? null : parsed);
   }
 
   const changeLibrary = async () => {
@@ -556,66 +495,11 @@ export default function Index() {
               </LinearGradient>
             </Pressable>
           </View>
-
-          <Modal visible={albumMenu} transparent animationType="slide" onRequestClose={() => setAlbumMenu(false)}>
-            <View className="flex-1 justify-center items-center bg-black/50">
-              <View className="bg-white rounded-2xl p-6 w-80 shadow-lg">
-                <Text className="text-2xl font-bold mb-6 text-center text-gray-800">Add New Album</Text>
-
-                <TextInput
-                  autoFocus={true}
-                  value={title}
-                  onChangeText={setTitle}
-                  placeholder="Title"
-                  placeholderTextColor="#9CA3AF"
-                  className="border border-gray-300 rounded-lg p-3 mb-3"
-                />
-                <TextInput
-                  value={artist}
-                  onChangeText={setArtist}
-                  placeholder="Artist"
-                  placeholderTextColor="#9CA3AF"
-                  className="border border-gray-300 rounded-lg p-3 mb-3"
-                />
-                <TextInput
-                  value={sides !== null ? sides.toString() : ""}
-                  onChangeText={handleSetSides}
-                  placeholder="Number of Sides"
-                  placeholderTextColor="#9CA3AF"
-                  keyboardType="numeric"
-                  className="border border-gray-300 rounded-lg p-3 mb-3"
-                />
-                <TextInput
-                  value={newGenres}
-                  onChangeText={setNewGenres}
-                  placeholder="Genres (separated by , )"
-                  placeholderTextColor="#9CA3AF"
-                  className="border border-gray-300 rounded-lg p-3 mb-3"
-                />
-
-                <View className="flex-row justify-around">
-                  <Pressable
-                    onPress={() => {
-                      Haptics.selectionAsync();
-                      addAlbum();
-                    }}
-                    className="bg-blue-500 px-4 py-2 rounded-lg"
-                  >
-                    <Text className="text-white font-semibold">Add</Text>
-                  </Pressable>
-                  <Pressable
-                    onPress={() => {
-                      Haptics.selectionAsync();
-                      setAlbumMenu(false)
-                    }}
-                    className="bg-gray-300 px-4 py-2 rounded-lg"
-                  >
-                    <Text className="text-gray-800 font-semibold">Cancel</Text>
-                  </Pressable>
-                </View>
-              </View>
-            </View>
-          </Modal>
+          <AddAlbumModal
+            visible={albumMenu}
+            onClose={() => setAlbumMenu(false)}
+            onAdd={addAlbum}
+          />
           <SettingsModal
             visible={settingsMenu}
             onClose={() => {

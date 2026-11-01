@@ -177,6 +177,8 @@ export async function fetchAlbumMetadata( title: string, artist: string): Promis
 
   const searchUrl = `https://musicbrainz.org/ws/2/release/?${params.toString()}`;
 
+  console.log(searchUrl);
+
   const response = await fetchMusicBrainz(searchUrl);
 
   if (!response.ok) {

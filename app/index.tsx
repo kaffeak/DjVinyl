@@ -1,4 +1,4 @@
-import {Pressable, Text, TextInput, View, Modal} from "react-native";
+import {Pressable, Text, View} from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import {useState, useEffect, useRef} from "react";
 import {Ionicons} from "@expo/vector-icons";
@@ -10,40 +10,33 @@ import ShowLibrary from "@/src/components/library";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import AlbumCards from "@/src/components/AlbumCards";
 import {GestureHandlerRootView} from "react-native-gesture-handler";
-import type {Album, NewAlbumData} from "@/src/types/album";
+import type {Album} from "@/src/types/album";
 import {buildSidesList, shuffleArray} from "@/src/utils/albums";
-import {db} from "@/src/services/appwrite";
-import {
-  listAlbums,
-  createAlbum,
-  updateAlbum,
-  deleteAlbum,
-} from "@/src/services/albumRepository";
-import {fetchAlbumMetadata} from "@/src/services/musicMetadata";
-import {isArray} from "node:util";
 import AddAlbumModal from "@/src/components/AddAlbumModal";
-import {getMetadataNeeds} from "@/src/utils/albumMetadata";
-
+import { useAlbumLibrary} from "@/src/hooks/useAlbumLibrary";
 
 const LAST_LIBRARY_KEY = "lastLibrary";
 const LAST_QUEUE = "lastQueue";
 
-const MAX_METADATA_ATTEMPTS = 2;
-const METADATA_COOLDOWN_MS = 5 * 60 * 1000;
-const MAX_AUTO_RETRIES_PER_LOAD = 3;
-
-type MetadataRetryInfo = {
-  attempts: number;
-  nextAllowedAt: number;
-}
-
 export default function Index() {
   const [owner, setOwner] = useState("");
+
+  const {
+    albums,
+    allGenres,
+    isLoading,
+    loadError,
+    loadedLibraryId,
+    addAlbum,
+    removeAlbum,
+    updateGenres,
+  } = useAlbumLibrary(owner);
+
   const [isReady, setIsReady] = useState(false);
 
   const [albumMenu, setAlbumMenu] = useState(false);
 
-  const [albums, setAlbums] = useState<any[]>([]);
+
   const [shuffledAlbums, setShuffledAlbums] = useState<Album[]>([]);
   const [albumIndex, setAlbumIndex] = useState(0);
 
@@ -64,96 +57,12 @@ export default function Index() {
   const [settingsMenu, setSettingsMenu] = useState(false);
   const [shuffleMode, setShuffleMode] = useState<"albums" | "sides">("albums");
   const [selectedGenres, setSelectedGenres] = useState<string[]>([]);
-  const [allGenres, setAllGenres] = useState<Record<string, number>>({});
+
   const [isCoverLoading, setIsCoverLoading] = useState(true);
 
-  const metadataInFlight = useRef(new Set<string>());
-  const metadataRetryInfo = useRef(new Map<string, MetadataRetryInfo>());
   const activeLibraryRef = useRef(owner);
   activeLibraryRef.current = owner;
 
-  const canLoadMetadata = (album: Album & {$id: string}, libraryId: string): boolean => {
-    const {needsCover, needsTracks} = getMetadataNeeds(album);
-
-    if (!needsCover && !needsTracks) return false;
-
-    const key = `${libraryId}:${album.$id}`;
-
-    if (metadataInFlight.current.has(key)) return false;
-
-    const retryInfo = metadataRetryInfo.current.get(key);
-
-    if (!retryInfo) return true;
-
-    if (retryInfo.attempts >= MAX_METADATA_ATTEMPTS) return false;
-
-    return true;
-  };
-
-  const loadAlbumMetadata = async (album: Album & {$id: string}, libraryId: string) => {
-    if (!canLoadMetadata(album, libraryId)) return;
-
-    const key = `${libraryId}:${album.$id}`;
-
-    const { needsCover, needsTracks } = getMetadataNeeds(album);
-
-    const previous = metadataRetryInfo.current.get(key);
-
-    metadataRetryInfo.current.set(key, {
-      attempts: (previous?.attempts ?? 0) + 1,
-      nextAllowedAt: 0,
-    });
-
-    metadataInFlight.current.add(key);
-
-    try {
-      console.log("[METADATA:START]", album.title);
-
-      const {coverUrl, trackList} = await fetchAlbumMetadata(album.title, album.artist);
-
-      const changes: {
-        url?: string;
-        trackList?: string[];
-      } = {};
-
-      if (needsCover && coverUrl) {
-        changes.url = coverUrl;
-      }
-
-      if (needsTracks && trackList.length > 0) {
-        changes.trackList = trackList;
-      }
-
-      if (Object.keys(changes).length === 0) {
-        console.warn( "[METADATA:EMPTY]", album.title);
-        return;
-      }
-
-      await updateAlbum(libraryId, album.$id, changes);
-
-      if (activeLibraryRef.current === libraryId){
-        setAlbums((prev) => prev.map((item) => item.$id === album.$id ? {...item, ...changes } : item));
-      }
-
-      console.log("[METADATA:SAVED]", {
-        album: album.title,
-        coverFound: !!coverUrl,
-        tracksFound: trackList.length,
-      });
-    } catch (error) {
-      console.error("[METADATA:FAILED]", album.title, error);
-    } finally {
-      const retryInfo = metadataRetryInfo.current.get(key);
-
-      if (retryInfo) {
-        metadataRetryInfo.current.set(key, {
-          ...retryInfo,
-          nextAllowedAt: Date.now() + METADATA_COOLDOWN_MS,
-        });
-      }
-      metadataInFlight.current.delete(key);
-    }
-  }
 
   const toggleQueueMode = async (current: boolean) => {
     const next = !current;
@@ -186,7 +95,7 @@ export default function Index() {
 
       const queuedAlbums = keys
         .map(key => albumMap.get(key))
-        .filter((a): a is Album => !!a);
+        .filter((a) => a !== undefined);
 
       setShuffledAlbums(queuedAlbums);
     } catch (e) {
@@ -206,10 +115,6 @@ export default function Index() {
       console.error("Failed to save queue", e);
     }
   };
-
-  useEffect(() => {
-    reshuffleAlbums(queueMode);
-  }, [selectedGenres, shuffleMode]);
 
   useEffect(() => {
     (async () => {
@@ -235,52 +140,7 @@ export default function Index() {
     );
   };
 
-  useEffect(() => {
-    if (!owner) return;
 
-    let cancelled = false;
-
-    listAlbums(owner).then((docs) => {
-      if (cancelled) return;
-
-      setAlbums(docs);
-
-      const cleanedAlbums: (Album & {$id: string})[] = docs.map((album) => ({
-        $id: album.$id,
-        title: album.title,
-        artist: album.artist,
-        url: album.url ?? "",
-        sides: album.sides,
-        genres: album.genres ?? [],
-        trackList: album.trackList ?? [],
-      }));
-
-      if (!isSwitchingLibrary.current) {
-        setShuffledAlbums(shuffleArray(cleanedAlbums));
-        setAlbumIndex(0);
-      } else {
-        isSwitchingLibrary.current = false;
-      }
-
-      const albumsToRetry = cleanedAlbums.filter((album) => canLoadMetadata(album, owner)).slice(0, MAX_AUTO_RETRIES_PER_LOAD);
-      console.log("[METADATA:AUTO-RETRY]", {
-        libraryId: owner,
-        albumsFound: albumsToRetry.length,
-      });
-
-      for (const album of albumsToRetry) {
-        void loadAlbumMetadata(album, owner);
-      }
-    }).catch((error) => {
-      if (!cancelled){
-        console.error("Faild to load albums: ", error);
-      }
-    });
-
-    return () => {
-      cancelled = true;
-    }
-  }, [owner]);
 
   const deckStructureKey = JSON.stringify(
     albums.map((album) => ({
@@ -291,25 +151,16 @@ export default function Index() {
   );
 
   useEffect(() => {
+    if (!owner || loadedLibraryId !== owner) return;
+
     reshuffleAlbums(queueMode);
-  }, [deckStructureKey, selectedGenres, shuffleMode]);
+  }, [loadedLibraryId, owner, deckStructureKey, selectedGenres, shuffleMode]);
 
-  useEffect(() => {
-    const genreCount: Record<string, number> = {};
 
-    albums.forEach((album) => {
-      if (Array.isArray(album.genres)) {
-        album.genres.forEach((genre: string) => {
-          genreCount[genre] = (genreCount[genre] ?? 0) + 1;
-        });
-      }
-    });
-    setAllGenres(genreCount);
-  }, [albums]);
 
   const reshuffleAlbums = (queue: boolean) => {
     if(queue) return;
-    let pool = albums;
+    let pool: Album[] = albums;
 
     if (selectedGenres.length > 0) {
       pool = albums.filter(
@@ -324,66 +175,6 @@ export default function Index() {
     const newShuffle = shuffleArray(pool);
     setShuffledAlbums(newShuffle);
     setAlbumIndex(0);
-  };
-
-  const handleUpdateGenres = async (albumTitle: string, albumArtist: string, newGenres: string[]) => {
-    const album = albums.find((a) => a.title === albumTitle && a.artist === albumArtist);
-
-    if (!album) return;
-
-    try {
-      await updateAlbum(owner, album.$id, {genres: newGenres});
-
-      setAlbums((prev) => prev.map((item) => item.$id === album.$id ? { ...item, genres: newGenres } : item));
-    } catch (error) {
-      console.error("Error updating Genres: ", error);
-    }
-  }
-
-  const addAlbum = async (data: NewAlbumData): Promise<boolean> => {
-    if (!owner) {
-      console.warn("No library selected");
-      return false;
-    }
-
-    try {
-      const libraryId = owner;
-
-      const newAlbum = await createAlbum(libraryId, data);
-
-      const createRecord: Album & {$id: string} = {
-        $id: newAlbum.$id,
-        title: data.title,
-        artist: data.artist,
-        sides: data.sides,
-        genres: data.genres,
-        url: typeof newAlbum.url === "string" ? newAlbum.url : "",
-        trackList: Array.isArray(newAlbum.trackList) ? newAlbum.trackList : [],
-      };
-
-      setAlbums((prev) => [...prev, createRecord]);
-
-      void loadAlbumMetadata(createRecord, libraryId);
-
-      return true;
-    } catch (error) {
-      console.error("Failed to create album: ", error);
-      return false;
-    }
-  };
-
-  const removeAlbum = async (albumToRemove: Album) => {
-    const album = albums.find((a) => a.title === albumToRemove.title && a.artist === albumToRemove.artist);
-
-    if (!album) return;
-
-    try {
-      await deleteAlbum(owner, album.$id);
-
-      setAlbums((prev) => prev.filter((item) => item.$id !== album.$id));
-    } catch (error) {
-      console.error("Failed to remove album: ", error);
-    }
   };
 
   const queueAlbum = (album: Album) => {
@@ -416,7 +207,7 @@ export default function Index() {
     );
   }
 
-  if (albums.length === 0) {
+  if (isLoading || (owner !== "" && loadedLibraryId !== owner)) {
     return <LoadingScreen />;
   }
   return (
@@ -495,6 +286,11 @@ export default function Index() {
               </LinearGradient>
             </Pressable>
           </View>
+          {loadError && (
+            <Text className="text-red-400 text-center px-4">
+              {loadError}
+            </Text>
+          )}
           <AddAlbumModal
             visible={albumMenu}
             onClose={() => setAlbumMenu(false)}
@@ -518,7 +314,7 @@ export default function Index() {
             albums={albums}
             queueMode={queueMode}
             selectedGenres={selectedGenres}
-            onUpdateAlbumGenres={handleUpdateGenres}
+            onUpdateAlbumGenres={updateGenres}
             onRemoveAlbumL={removeAlbum}
             onClose={() => {setLibrary(false)}}
             queueAlbum={queueAlbum}

@@ -9,6 +9,12 @@ export interface Album {
   sideLetter?: string;
 }
 
+export interface DeckEntry {
+  entryId: string;
+  albumId: string;
+  sideLetter?: string;
+}
+
 export type ShuffleMode = "albums" | "sides";
 
 export type NewAlbumData = Pick<Album, "title" | "artist" | "sides" | "genres" >;

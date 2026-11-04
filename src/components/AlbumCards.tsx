@@ -1,115 +1,76 @@
-import React, {useCallback, useEffect, useRef, useState} from "react";
+import React, {useRef} from "react";
 import {Pressable, StyleSheet, Text, View} from "react-native";
 import CardItem from "@/src/components/CardItem";
-import {scheduleOnRN} from "react-native-worklets";
 import ShuffleButton from "@/src/components/shuffleButton";
-import type {Album} from "@/src/types/album";
+import {DeckCard} from "@/src/hooks/useAlbumDeck";
+import * as Haptics from "expo-haptics";
 
 type Props = {
-  albums: Album[],
-  latestAlbums: Album[],
-  reShuffleAlbums: (bool: boolean) => void,
-  queueMode: boolean,
-  onQueueEmpty: () => void,
-  onProgressChange?: (cards: Album[]) => void,
-}
+  cards: DeckCard[];
+  queueMode: boolean;
+  onNext: () => void;
+  onClearQueue: () => void;
+};
 
-const AlbumCards = ({ albums, latestAlbums, reShuffleAlbums, queueMode, onQueueEmpty, onProgressChange }: Props) => {
-  const [cards, setCards] = useState<Album[]>(albums);
+const AlbumCards = ({ cards, queueMode, onNext, onClearQueue }: Props) => {
   const activCardId = useRef<string | null>(null);
 
-  useEffect(() => {
-    setCards(prev => {
-      if (!queueMode) return albums;
-      if (prev.length === 0) return albums;
-      const makeKey = (a: Album) => `${a.title}|${a.artist}|${a.sideLetter ?? ""}`;
-      const prevFirstKey = makeKey(prev[0]);
-      const startIndex = albums.findIndex(a => makeKey(a) === prevFirstKey);
-      if (startIndex === -1) return albums;
-      return albums.slice(startIndex);
-    })
-  }, [albums]);
+  if (cards.length === 0) {
+    return (
+      <View style={styles.container}>
+        <Text className="text-gray-200 font-semibold text-lg text-center">
+          {queueMode ?
+          "Go into library and queue some records up!" :
+          ""
+          }
+        </Text>
+      </View>
+    );
+  }
 
-  useEffect(() => {
-    onProgressChange?.(cards)
-  }, [cards]);
-
-  const shuffleCards = useCallback(() => {
-    //if (isSwipingRef.current) return;
-    //isSwipingRef.current = true;
-
-    setCards(prev => {
-      if (prev.length === 0) return prev;
-
-      const updated = prev.slice(1);
-
-      if (updated.length === 0) {
-        if (queueMode) {
-          onQueueEmpty?.();
-        } else {
-          scheduleOnRN(() => reShuffleAlbums(queueMode));
-        }
-      }
-
-      return updated;
-    });
-    //setTimeout(() => {
-    //  isSwipingRef.current = false;
-    //}, 150);
-  }, [queueMode, onQueueEmpty, reShuffleAlbums]);
-
+  const currentAlbum = cards[0].album;
   return (
     <View style={styles.container}>
-      {queueMode && albums.length === 0 ? (
-        <View>
-          <Text className="text-gray-200 font-semibold text-lg">Go into library and queue some records up!</Text>
-        </View>
-      ) : (
-        <View style={styles.container}>
-          <View style={{width: 250, height: 250, position: "relative"}}>
-            {cards.map((album, index) => {
-              if(index >= 6) return null
-
-              const updatedAlbum = album.$id ? latestAlbums.find((a) => a.$id === album.$id) : undefined;
-              const displaydAlbum = updatedAlbum ? {
-                ...album,
-                url: updatedAlbum.url,
-                trackList: updatedAlbum.trackList,
-              } : album;
-              return <CardItem
-                key={`${album.$id ?? `${album.title}-${album.artist}`}-${album.sideLetter ?? ""}`}
-                album={displaydAlbum}
-                index={index}
-                shuffleCards={shuffleCards}
-                isTop={index === 0}
-                activeCardId={activCardId}
-              />
-            })}
-          </View>
-          <View style={styles.textContainer}>
-            {cards.length > 0 && (
-              <Text numberOfLines={2} className="font-bold text-lg text-gray-200 text-center">{cards[0].title} — {cards[0].artist} {cards[0].sideLetter ? ` (Side ${cards[0].sideLetter})` : ""}</Text>
-            )}
-          </View>
-          <View>
-            <ShuffleButton callParentFunction={shuffleCards} />
-          </View>
-          {queueMode && cards.length > 0 && (
-            <Pressable
-            onPress={onQueueEmpty}
-            style={{
-              marginTop: 24,
-              paddingVertical: 10,
-              paddingHorizontal: 20,
-              backgroundColor: "#ef4444", // red-500
-              borderRadius: 999,
-            }}
-          >
-            <Text style={{color: "white", fontWeight: "600"}}>
-              Clear Queue
-            </Text>
-          </Pressable>)}
-        </View>
+      <View style={{
+        width: 250,
+        height: 250,
+        position: "relative",
+      }}>
+        {cards.slice(0, 6).map(({entryId, album}, index) => (
+          <CardItem
+            key={entryId}
+            album={album}
+            index={index}
+            shuffleCards={onNext}
+            isTop={index === 0}
+            activeCardId={activCardId}
+          />
+        ))}
+      </View>
+      <View style={styles.textContainer}>
+        <Text
+          numberOfLines={2}
+          className="font-bold text-lg text-gray-200 text-center"
+        >
+          {currentAlbum.title} - {currentAlbum.artist} {currentAlbum.sideLetter ? ` (Side ${currentAlbum.sideLetter})` : ""}
+        </Text>
+      </View>
+      <ShuffleButton callParentFunction={onNext}/>
+      {queueMode && (
+        <Pressable
+          onPress={() => {
+            void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+            onClearQueue();
+          }}
+          style={{
+            marginTop: 24,
+            paddingVertical: 10,
+            backgroundColor: "#ef4444",
+            borderRadius: 999,
+          }}
+        >
+          <Text style={{color: "white", fontWeight: "600"}}>Clear Queue</Text>
+        </Pressable>
       )}
     </View>
   )

@@ -14,7 +14,7 @@ interface ReleaseSearchResponse {
 
 interface Track {
   title?: string;
-  lenght?: number | null;
+  length?: number | null;
   recording?: {
     title?: string;
     length?: number | null;
@@ -73,7 +73,7 @@ function formatTrack(track: Track): string | null {
 
   if (!title) return null;
 
-  const durationMs = track.lenght ?? track.recording?.length;
+  const durationMs = track.length ?? track.recording?.length;
 
   if (durationMs == null || !Number.isFinite(durationMs)) return title;
 
@@ -82,7 +82,7 @@ function formatTrack(track: Track): string | null {
 
   const seconds = Math.floor((durationMs % 60000) / 1000).toString().padStart(2, "0");
 
-  return `${track.title} - ${minutes}:${seconds}`;
+  return `${title} - ${minutes}:${seconds}`;
 }
 
 async function fetchTrackList( releaseId: string ): Promise<string[]> {

@@ -1,7 +1,7 @@
 import {act, renderHook} from "@testing-library/react-native"
 import {Album} from "@/src/types/album";
 import {useAlbumDeck} from "@/src/hooks/useAlbumDeck";
-import {Props} from "expo-system-ui/plugin/build/withAndroidUserInterfaceStyle";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 jest.mock(
   "@react-native-async-storage/async-storage",
@@ -47,6 +47,11 @@ const defaultProps = {
 };
 
 describe("useAlbumDeck", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    jest.mocked(AsyncStorage.getItem).mockResolvedValue(null);
+  })
+
   test("should initialize one card per album", async () => {
     const {result} = await renderHook(() => useAlbumDeck(defaultProps));
 
@@ -183,6 +188,168 @@ describe("useAlbumDeck", () => {
       "album-3",
       "album-4",
     ]);
+  });
+
+  test("should restore a saved queue in the correct order", async () => {
+    const savedQueue = [
+      {albumId: "album-3", sideLetter: "B"},
+      {albumId: "album-1"},
+      {albumId: "album-3", sideLetter: "A"},
+      {albumId: "album-3", sideLetter: "B"},
+      {albumId: "album-1", sideLetter: "B"},
+      {albumId: "doesNotExist", sideLetter: "4"},
+    ];
+
+    jest.mocked(AsyncStorage.getItem).mockResolvedValue(JSON.stringify(savedQueue));
+
+    const {result} = await renderHook(() => useAlbumDeck(defaultProps));
+
+    await act(async () => {
+      await result.current.toggleQueueMode(false);
+    });
+
+    expect(result.current.queueMode).toBe(true);
+
+    expect(AsyncStorage.getItem).toHaveBeenCalledWith("lastQueuelibrary-1");
+
+    const restoredCards = result.current.cards.map((card) => ({
+      albumId: card.album.$id,
+      sideLetter: card.album.sideLetter,
+    }));
+
+    expect(restoredCards).toEqual([
+      { albumId: "album-3", sideLetter: "B"},
+      { albumId: "album-1", sideLetter: undefined },
+      { albumId: "album-3", sideLetter: "A"},
+      { albumId: "album-3", sideLetter: "B"},
+      { albumId: "album-1", sideLetter: "B"},
+    ]);
+
+    const entryIds = result.current.cards.map((card) => card.entryId);
+
+    const uniqueEntryIds = new Set(entryIds);
+
+    expect(uniqueEntryIds.size).toBe(entryIds.length);
+  });
+
+  test("should save only the remaining queue when exiting", async () => {
+    const savedQueue = [
+      { albumId: "album-1" },
+      { albumId: "album-2" },
+      { albumId: "album-3", sideLetter: "B" },
+      { albumId: "album-2", sideLetter: "A"},
+      { albumId: "album-3", sideLetter: "B"},
+    ];
+
+    jest.mocked(AsyncStorage.getItem).mockResolvedValue(JSON.stringify(savedQueue));
+
+    const {result} = await renderHook(() => useAlbumDeck(defaultProps));
+
+    await act(async () => {
+      await result.current.toggleQueueMode(false);
+    });
+
+    expect(result.current.cards).toHaveLength(5);
+
+    await act(async () => {
+      result.current.nextCard();
+    });
+
+    expect(result.current.cards).toHaveLength(4);
+
+    await act(async () => {
+      await result.current.toggleQueueMode(true);
+    });
+
+    expect(result.current.queueMode).toBe(false);
+
+    expect(AsyncStorage.setItem).toHaveBeenCalledWith(
+      "lastQueuelibrary-1",
+      JSON.stringify([
+        { albumId: "album-2"},
+        { albumId: "album-3", sideLetter: "B"},
+        { albumId: "album-2", sideLetter: "A"},
+        { albumId: "album-3", sideLetter: "B"},
+      ])
+    );
+  });
+
+  test("should clear all queued albums", async () => {
+    jest.mocked(AsyncStorage.getItem).mockResolvedValue(
+      JSON.stringify([
+        { albumId: "album-1"},
+        { albumId: "album-2", sideLetter: "A"},
+        { albumId: "album-1", sideLetter: "B"},
+        { albumId: "album-2", sideLetter: "A"},
+      ])
+    );
+
+    const {result} = await renderHook(() => useAlbumDeck(defaultProps));
+
+    await act(async () => {
+      await result.current.toggleQueueMode(false);
+    });
+
+    expect(result.current.cards).toHaveLength(4);
+
+    await act(async () => {
+      await result.current.clearQueue();
+    });
+
+    expect(result.current.cards).toHaveLength(0);
+
+    expect(result.current.queueMode).toBe(true);
+
+    await act(async () => {
+      await result.current.toggleQueueMode(true);
+    });
+
+    expect(AsyncStorage.setItem).toHaveBeenCalledWith(
+      "lastQueuelibrary-1",
+      "[]"
+    );
+  });
+
+  test("should convert legacy queue to a modern one", async () => {
+    jest.mocked(AsyncStorage.getItem).mockResolvedValue(
+      JSON.stringify([
+        "album one|artist one",
+        "album two|artist two",
+        "album one|artist one",
+      ])
+    );
+
+    const {result} = await renderHook(() => useAlbumDeck(defaultProps));
+
+    await act(async () => {
+      await result.current.toggleQueueMode(false);
+    });
+
+    expect(result.current.cards).toHaveLength(3);
+
+    const restoredCards = result.current.cards.map((card) => ({
+      albumId: card.album.$id,
+      sideLetter: card.album.sideLetter,
+    }));
+
+    expect(restoredCards).toEqual([
+      { albumId: "album-1", sideLetter: undefined},
+      { albumId: "album-2", sideLetter: undefined},
+      { albumId: "album-1", sideLetter: undefined},
+    ]);
+
+    await act(async () => {
+      await result.current.toggleQueueMode(true);
+    });
+
+    expect(AsyncStorage.setItem).toHaveBeenCalledWith(
+      "lastQueuelibrary-1",
+      JSON.stringify([
+        { albumId: "album-1"},
+        { albumId: "album-2"},
+        { albumId: "album-1"},
+      ])
+    );
   });
 });
 

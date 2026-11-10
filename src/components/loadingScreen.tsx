@@ -13,7 +13,7 @@ export default function LoadingScreen() {
             }}
         >
             <LottieView
-                source={require("../assets/images/turntable.json")}
+                source={require("../../assets/images/turntable.json")}
                 autoPlay
                 loop
                 style={{ width: 250, height: 250 }}

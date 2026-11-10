@@ -1,4 +1,4 @@
-import { View, StyleSheet } from "react-native";
+import {View, StyleSheet, Text} from "react-native";
 import LottieView from "lottie-react-native";
 import { Image } from "expo-image";
 import { useState } from "react";
@@ -10,12 +10,28 @@ type Props = {
 export default function AlbumCover({ uri }: Props) {
   const [loading, setLoading] = useState(true);
 
+  if (!uri?.trim()){
+    return (
+      <View
+        style={[
+          styles.container,
+          {
+            justifyContent: "center",
+            alignItems: "center",
+          }
+        ]}
+      >
+        <Text style={{ color: "#94a3b8"}}>No cover</Text>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
       {loading && (
         <View style={styles.loader}>
           <LottieView
-            source={require("../assets/images/turntable.json")}
+            source={require("../../assets/images/turntable.json")}
             autoPlay={true}
             loop={true}
             style={{ width: 80, height: 80 }}

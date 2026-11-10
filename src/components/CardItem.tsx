@@ -14,18 +14,11 @@ import {scheduleOnRN} from "react-native-worklets";
 import invert from "invert-color";
 import * as Haptics from "expo-haptics";
 import { Dimensions } from "react-native";
+import type {Album} from "@/src/types/album";
+import {parseTrack} from "@/src/utils/tracks";
 
 const { width: screenWidth } = Dimensions.get("window");
 
-export interface Album {
-  title: string;
-  artist: string;
-  url: string;
-  sides: number;
-  genres: string[],
-  trackList: string[],
-  sideLetter?: string;
-}
 type Props = {
   index: number;
   album: Album;
@@ -133,19 +126,6 @@ const CardItem = ({index, album, shuffleCards, isTop, activeCardId}: Props) => {
     };
   })
 
-  const parseTrack = (track: string) => {
-    const index = track.lastIndexOf(" - ");
-
-    if (index === -1) {
-      return { title: track, duration: "" };
-    }
-
-    return {
-      title: track.slice(0, index),
-      duration: track.slice(index + 3),
-    };
-  };
-
   return (
     <GestureDetector gesture={gesture}>
       <Animated.View
@@ -155,7 +135,7 @@ const CardItem = ({index, album, shuffleCards, isTop, activeCardId}: Props) => {
         ]}>
           {isCoverLoading ? (
             <LottieView
-              source={require("../assets/images/turntable.json")}
+              source={require("../../assets/images/turntable.json")}
               autoPlay
               loop
               style={{width: 180, height: 180}}

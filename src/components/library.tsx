@@ -10,19 +10,11 @@ import {
 import * as Haptics from "expo-haptics";
 import {LinearGradient} from "expo-linear-gradient";
 import {useCallback, useEffect, useMemo, useState} from "react";
-import AlbumInfoModal from "@/app/albumInfoModal";
-import AlbumGridItem from "@/app/albumGridItem";
+import AlbumInfoModal from "@/src/components/albumInfoModal";
+import AlbumGridItem from "@/src/components/albumGridItem";
 import {Ionicons} from "@expo/vector-icons";
+import type {Album} from "@/src/types/album";
 
-export interface Album {
-  title: string;
-  artist: string;
-  url: string;
-  sides: number;
-  genres: string[],
-  trackList: string[],
-  sideLetter?: string;
-}
 type libraryProps = {
   albums: Album[],
   selectedGenres: string[];

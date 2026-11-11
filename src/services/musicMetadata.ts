@@ -1,15 +1,13 @@
+import {MusicBrainzRelease} from "@/src/types/musicBrainz";
+import {selectBestRelease} from "@/src/utils/releaseMatching";
+
 export interface AlbumMetadata {
   coverUrl: string | null;
   trackList: string[];
 }
 
-interface MusicBrainzRelese {
-  id: string;
-  "release-group"? : {id: string};
-}
-
 interface ReleaseSearchResponse {
-  releases?: MusicBrainzRelese[];
+  releases?: MusicBrainzRelease[];
 }
 
 interface Track {
@@ -187,14 +185,14 @@ export async function fetchAlbumMetadata( title: string, artist: string): Promis
 
   const data = (await response.json()) as ReleaseSearchResponse;
 
-  const release = data.releases?.[0];
+  const release = selectBestRelease(data.releases ?? [], title, artist)
 
   console.log("[MB:SEARCH]", {
     requestedTitle: title,
     requestedArtist: artist,
-    statue: response.status,
-    resultsFound: data.releases?.length,
-    selectedRelese: release?.id ?? null,
+    status: response.status,
+    resultsFound: data.releases?.length ?? 0,
+    selectedRelease: release?.id ?? null,
   });
 
   if (!release) {

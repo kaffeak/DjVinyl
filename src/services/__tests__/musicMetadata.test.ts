@@ -1,4 +1,5 @@
 import {fetchAlbumMetadata} from "@/src/services/musicMetadata";
+import {selectBestRelease} from "@/src/utils/releaseMatching";
 
 const orginalFetch = globalThis.fetch;
 
@@ -163,5 +164,80 @@ describe("fetchAlbumMetadata", () => {
 
     await jest.runAllTimersAsync();
     await assertion;
+  });
+
+  test("should fetch metadata from the best matching release", async () => {
+    const fetchReturn = {
+      releases: [
+        {
+          id: "cd-release",
+          title: "The Last in Line",
+          "artist-credit": [{ name: "Dio" }],
+          media: [{ format: "CD" }],
+        },
+        {
+          id: "vinyl-release",
+          title: "The Last in Line",
+          "artist-credit": [{ name: "Dio" }],
+          media: [{ format: "Vinyl" }],
+        },
+      ]
+    };
+
+    fetchMock.mockImplementation(async (input) => {
+      const url = String(input);
+
+      if (url.includes("/ws/2/release/?")) {
+        return mockResponse(fetchReturn);
+      }
+
+      if (url.includes("/ws/2/release/vinyl-release?")) {
+        return mockResponse({
+          media: [
+            {
+              tracks: [
+                {
+                  title: "We Rock",
+                  length: 275000,
+                },
+              ],
+            },
+          ],
+        });
+      }
+
+      if (url.startsWith("https://coverartarchive.org/release/vinyl-release/")) {
+        return mockResponse({
+          images: [
+            {
+              front: true,
+              thumbnails: {
+                "500": "https://example.com/vinyl-cover.jpg",
+              },
+            },
+          ],
+        });
+      }
+
+      throw new Error(`Unexpected request: ${url}`);
+    });
+
+    const resultPromise = fetchAlbumMetadata("The Last in Line", "Dio");
+
+    const assertion = expect(resultPromise).resolves.toEqual({
+      coverUrl: "https://example.com/vinyl-cover.jpg",
+      trackList: ["We Rock - 4:35"],
+    });
+
+    await jest.runAllTimersAsync();
+    await assertion;
+
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+
+    const requestedUrls = fetchMock.mock.calls.map(([input]) => String(input));
+
+    expect(requestedUrls.some((url) => url.includes("/ws/2/release/vinyl-release?"))).toBe(true);
+
+    expect(requestedUrls.some((url) => url.includes("/ws/2/release/cd-release?"))).toBe(false);
   });
 });

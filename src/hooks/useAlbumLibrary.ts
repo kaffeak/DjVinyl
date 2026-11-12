@@ -79,11 +79,19 @@ export function useAlbumLibrary(owner: string){
       try {
         console.log("[METADATA:START]", album.title);
 
-        const { coverUrl, trackList } = await fetchAlbumMetadata(album.title, album.artist);
+        const metadata = await fetchAlbumMetadata(album.title, album.artist);
 
-        const changes: { url?: string; trackList?: string[]; } = {};
+        console.log("[METADATA:RECEIVED]", metadata);
+
+        const {coverUrl, backCoverUrl, trackList,} = metadata;
+
+        const changes: { url?: string; backCoverUrl?: string; trackList?: string[]; } = {};
 
         if (needsCover && coverUrl) changes.url = coverUrl;
+
+        if (!album.backCoverUrl?.trim() && backCoverUrl){
+          changes.backCoverUrl = backCoverUrl;
+        }
 
         if (needsTracks && trackList.length > 0) changes.trackList = trackList;
 
@@ -142,6 +150,7 @@ export function useAlbumLibrary(owner: string){
             title: typeof doc.title === "string" ? doc.title : "",
             artist: typeof doc.artist === "string" ? doc.artist : "",
             url: typeof doc.url === "string" ? doc.url : "",
+            backCoverUrl: typeof doc.backCoverUrl === "string" ? doc.backCoverUrl : "",
             sides: typeof doc.sides === "number" ? doc.sides : 2,
             genres: Array.isArray(doc.genres) ? doc.genres.filter((g: unknown): g is string => typeof g === "string") : [],
             trackList: Array.isArray(doc.trackList) ? doc.trackList.filter((t: unknown): t is string => typeof t === "string") : [],
@@ -190,6 +199,7 @@ export function useAlbumLibrary(owner: string){
           sides: data.sides,
           genres: data.genres,
           url: typeof newAlbum.url === "string" ? newAlbum.url : "",
+          backCoverUrl: typeof newAlbum.backCoverUrl === "string" ? newAlbum.backCoverUrl : "",
           trackList: Array.isArray(newAlbum.trackList) ? newAlbum.trackList : [],
         };
 

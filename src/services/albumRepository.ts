@@ -4,6 +4,7 @@ import {NewAlbumData} from "@/src/types/album";
 
 export type AlbumUpdates = {
   url?: string;
+  backCoverUrl?: string;
   genres?: string[];
   trackList?: string[];
 };

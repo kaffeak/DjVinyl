@@ -24,6 +24,7 @@ const albumOne: LibraryAlbum = {
   title: "Album One",
   artist: "Artist One",
   url: "https://example.com/cover1.jpg",
+  backCoverUrl: "https://example.com/backcover1.jpg",
   sides: 2,
   genres: ["rock"],
   trackList: ["Track One - 3:15"],
@@ -34,6 +35,7 @@ const albumTwo: LibraryAlbum = {
   title: "Album Two",
   artist: "Artist Two",
   url: "https://example.com/cover2.jpg",
+  backCoverUrl: "https://example.com/backcover2.jpg",
   sides: 2,
   genres: ["rock", "jazz"],
   trackList: ["Track One - 4:30"],
@@ -45,6 +47,7 @@ const incompleteAlbum: LibraryAlbum = {
   title: "Missing Album",
   artist: "Missing Artist",
   url: "",
+  backCoverUrl: "",
   trackList: [],
 };
 
@@ -82,6 +85,7 @@ describe("useAlbumLibrary", () => {
 
     jest.mocked(fetchAlbumMetadata).mockResolvedValue({
       coverUrl: null,
+      backCoverUrl: null,
       trackList: [],
     });
   });
@@ -181,6 +185,7 @@ describe("useAlbumLibrary", () => {
       ...newAlbumData,
       $id: "album-3",
       url: "https://example.com/cover3.jpg",
+      backCoverUrl: "https://example.com/backcover3.jpg",
       trackList: ["Track Three - 3:00"],
     };
 
@@ -297,6 +302,7 @@ describe("useAlbumLibrary", () => {
       ...newAlbumData,
       $id: "album-3",
       url: "",
+      backCoverUrl: "",
       trackList: [],
     };
 
@@ -498,5 +504,94 @@ describe("useAlbumLibrary", () => {
 
     expect(fetchAlbumMetadata).not.toHaveBeenCalledWith("Missing Album3", "Missing Artist3");
     expect(fetchAlbumMetadata).not.toHaveBeenCalledWith("Missing Album4", "Missing Artist4");
+  });
+
+  test("should save back-cover artwork when metadata is fetched", async () => {
+
+    jest.mocked(listAlbums).mockResolvedValue(asDocument([incompleteAlbum]));
+
+    jest.mocked(fetchAlbumMetadata).mockResolvedValue({
+      coverUrl: "https://example.com/front.jpg",
+      backCoverUrl: "https://example.com/back.jpg",
+      trackList: ["Track One - 3:15"],
+    });
+
+    const {result} = await renderHook(() => useAlbumLibrary("library-A"));
+
+    await waitFor(() => {
+      expect(result.current.loadedLibraryId).toBe("library-A");
+    });
+
+    expect(result.current.albums).toHaveLength(1);
+
+    await waitFor(() => {
+      expect(fetchAlbumMetadata).toHaveBeenCalledWith("Missing Album", "Missing Artist");
+    });
+
+    await waitFor(() => {
+      expect(updateAlbum).toHaveBeenCalledWith("library-A", "album-missing", {
+        url: "https://example.com/front.jpg",
+        backCoverUrl: "https://example.com/back.jpg",
+        trackList: ["Track One - 3:15"],
+      });
+    });
+
+    await waitFor(() => {
+      expect(result.current.albums[0]).toEqual(
+        expect.objectContaining({
+          $id: "album-missing",
+          url: "https://example.com/front.jpg",
+          backCoverUrl: "https://example.com/back.jpg",
+          trackList: ["Track One - 3:15"],
+        })
+      );
+    });
+  });
+
+  test("should preserve existing front cover when fetching missing metadata", async () => {
+    const pratiallyCompleteAlbum: LibraryAlbum = {
+      ...incompleteAlbum,
+      url: "https://example.com/existing-front.jpg",
+      backCoverUrl: "",
+      trackList: [],
+    };
+
+    jest.mocked(listAlbums).mockResolvedValue(asDocument([pratiallyCompleteAlbum]));
+
+    jest.mocked(fetchAlbumMetadata).mockResolvedValue({
+      coverUrl: "https://example.com/new-front.jpg",
+      backCoverUrl: "https://example.com/back.jpg",
+      trackList: ["Track One - 3:15"],
+    });
+
+    const {result} = await renderHook(() => useAlbumLibrary("library-A"));
+
+    await waitFor(() => {
+      expect(result.current.loadedLibraryId).toBe("library-A");
+    });
+
+    await waitFor(() => {
+      expect(fetchAlbumMetadata).toHaveBeenCalledWith("Missing Album", "Missing Artist");
+    });
+
+    await waitFor(() => {
+      expect(updateAlbum).toHaveBeenCalledWith("library-A", "album-missing", {
+        backCoverUrl: "https://example.com/back.jpg",
+        trackList: ["Track One - 3:15"],
+      });
+    });
+
+    await waitFor(() => {
+      expect(result.current.albums[0]).toEqual(
+        expect.objectContaining({
+          $id: "album-missing",
+          url: "https://example.com/existing-front.jpg",
+          backCoverUrl: "https://example.com/back.jpg",
+          trackList: ["Track One - 3:15"],
+        })
+      );
+    });
+
+    expect(jest.mocked(updateAlbum).mock.calls[0][2]).not.toHaveProperty("url");
   });
 });

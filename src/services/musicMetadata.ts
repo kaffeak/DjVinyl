@@ -3,6 +3,7 @@ import {selectBestRelease} from "@/src/utils/releaseMatching";
 
 export interface AlbumMetadata {
   coverUrl: string | null;
+  backCoverUrl: string | null;
   trackList: string[];
 }
 
@@ -28,10 +29,38 @@ interface ReleaseDetailsResponse {
 interface CoverArtResponse {
   images?: {
     front?: boolean;
+    back?: boolean;
+    types?: string[];
     image?: string;
     thumbnails?: Record<string, string>;
   }[];
 }
+
+interface ReleaseArtworkAvailability {
+  artwork?: boolean;
+  front?: boolean;
+  back?: boolean;
+  count?: number;
+}
+
+interface BrowsedRelease {
+  id: string;
+  title: string;
+  "cover-art-archive"?: ReleaseArtworkAvailability;
+  media?: {
+    format?: string;
+  }[];
+}
+
+interface ReleaseBrowseResponse {
+  releases?: MusicBrainzRelease[];
+  "release-count"?: number;
+  "release-offset"?: number;
+}
+
+type  CoverImage = NonNullable<CoverArtResponse["images"]>[number];
+
+type ArtworkResult = Pick<AlbumMetadata, "coverUrl" | "backCoverUrl">;
 
 const apiHeaders = {
   "User-Agent": "DjVinyl/1.0.0 (kaffe.ak46@gmail.com)",
@@ -42,13 +71,54 @@ const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve,
 
 let requestQueue: Promise<unknown> = Promise.resolve();
 
+async function fetchReleaseGroupReleases(groupId: string): Promise<MusicBrainzRelease[]> {
+  const params = new URLSearchParams({
+    "release-group": groupId,
+    inc: "media artist-credits release-groups",
+    fmt: "json",
+    limit: "100",
+  });
+  const url = `https://musicbrainz.org/ws/2/release/?${params.toString()}`;
+
+  const response = await fetchMusicBrainz(url);
+
+  if (!response.ok){
+    throw new Error(`Release-group browse failed: ${response.status}`);
+  }
+
+  const data = (await response.json()) as ReleaseBrowseResponse;
+
+  console.log(
+    "[MB:GROUP:ARTWORK]",
+    data.releases?.map((release) => ({
+      id: release.id,
+      title: release.title,
+      formats: release.media?.map(
+        (medium) => medium.format
+      ),
+      artwork: release["cover-art-archive"],
+    }))
+  );
+
+  return data.releases ?? [];
+}
+
+function getArtworkUrl(image?: CoverImage): string | null {
+  const url = image?.thumbnails?.["500"] ??
+    image?.thumbnails?.["1200"] ?? image?.image;
+
+  return url ? url.replace(/^http:\/\//, "https://") : null;
+}
+
 function fetchMusicBrainz(url: string): Promise<Response> {
   const job = requestQueue.then(async () => {
     for (let attempt = 0; attempt < 3; attempt++) {
       const response = await fetch(url, {headers: apiHeaders});
       await delay(1100);
 
-      if ((response.status !== 503 && response.status !== 429) || attempt === 2){
+      const retryableStatuses = [429, 500, 502, 503, 504];
+
+      if (!retryableStatuses.includes(response.status) || attempt === 2){
         return response;
       }
 
@@ -128,7 +198,7 @@ async function fetchTrackList( releaseId: string ): Promise<string[]> {
   }
 }
 
-async function fetchCoverArt(releaseId: string, releaseGroupId?: string): Promise<string | null> {
+async function fetchCoverArt(releaseId: string, releaseGroupId?: string): Promise<ArtworkResult> {
   const releaseUrl =  `https://coverartarchive.org/release/${releaseId}/`;
 
   let response = await fetch(releaseUrl, {headers: apiHeaders,});
@@ -138,7 +208,11 @@ async function fetchCoverArt(releaseId: string, releaseGroupId?: string): Promis
     status: response.status,
   });
 
-  if (response.status === 404 && releaseGroupId) {
+  if (response.status === 404) {
+    if (!releaseGroupId) {
+      return {coverUrl: null, backCoverUrl: null};
+    }
+
     const groupUrl = `https://coverartarchive.org/release-group/${releaseGroupId}/`;
 
     response = await fetch(groupUrl, {headers: apiHeaders,});
@@ -146,9 +220,31 @@ async function fetchCoverArt(releaseId: string, releaseGroupId?: string): Promis
       releaseGroupId,
       status: response.status,
     })
+
+    if (response.status === 404) return {coverUrl: null, backCoverUrl: null};
+
+    if (!response.ok) {
+      throw new Error(`Cover art request failed: ${response.status}`);
+    }
+
+    const groupData = (await response.json()) as CoverArtResponse;
+
+    const images = groupData.images ?? [];
+
+    console.log("[CAA:GROUP:IMAGES]", {
+      images: images.map((image) => ({
+        front: image.front,
+        back: image.back,
+        types: image.types,
+      })),
+    });
+
+    const frontImage = images.find((image) => image.front) ?? images.find((image) => image.types?.includes("Front"));
+
+    return {coverUrl: getArtworkUrl(frontImage), backCoverUrl: null,};
+
   }
 
-  if (response.status === 404) return null;
   if (!response.ok) {
     throw new Error(`Cover art request failed: ${response.status}`);
   }
@@ -157,17 +253,25 @@ async function fetchCoverArt(releaseId: string, releaseGroupId?: string): Promis
 
   const images = data.images ?? [];
 
-  const frontImage = images.find((image) => image.front) ?? images[0];
+  const frontImage = images.find((image) => image.front) ?? images.find((image) => image.types?.includes("Front")) ?? images.find((image) => !image.back && !image.types?.includes("Back"));
 
-  const imageUrl =
-    frontImage?.thumbnails?.["500"] ??
-    frontImage?.thumbnails?.["1200"] ??
-    frontImage?.image;
+  const backImage = images.find((image) => image.back) ?? images.find((image) => image.types?.includes("Back"));
 
-  console.log("[CAA:RESULT]", {
-    imageUrl: imageUrl ?? null,
-  })
-  return imageUrl ? imageUrl.replace(/^http:\/\//, "https://") : null;
+  console.log("[CAA:BACK:DEBUG]", {
+    releaseId,
+    imageCount: images.length,
+    backImages: images.filter(
+      (image) =>
+        image.back === true ||
+        image.types?.includes("Back")
+    ).length,
+    selectedBackUrl:
+      backImage?.thumbnails?.["500"] ??
+      backImage?.image ??
+      null,
+  });
+
+  return {coverUrl: getArtworkUrl(frontImage), backCoverUrl: getArtworkUrl(backImage)};
 }
 
 export async function fetchAlbumMetadata( title: string, artist: string): Promise<AlbumMetadata> {
@@ -185,22 +289,44 @@ export async function fetchAlbumMetadata( title: string, artist: string): Promis
 
   const data = (await response.json()) as ReleaseSearchResponse;
 
-  const release = selectBestRelease(data.releases ?? [], title, artist)
+  const searchRelease = selectBestRelease(data.releases ?? [], title, artist);
 
-  console.log("[MB:SEARCH]", {
-    requestedTitle: title,
-    requestedArtist: artist,
-    status: response.status,
-    resultsFound: data.releases?.length ?? 0,
-    selectedRelease: release?.id ?? null,
-  });
-
-  if (!release) {
-    return {coverUrl: null, trackList: []};
+  if (!searchRelease){
+    return {
+      coverUrl: null,
+      backCoverUrl: null,
+      trackList: [],
+    };
   }
 
-  const releaseId = release.id;
-  const releaseGroupId = release["release-group"]?.id;
+  const releaseGroupId = searchRelease["release-group"]?.id;
+
+  let selectedRelease = searchRelease;
+
+  if (releaseGroupId) {
+    try {
+      const groupReleases = await fetchReleaseGroupReleases(releaseGroupId);
+
+      const bestGroupRelease = selectBestRelease(groupReleases, title, artist);
+
+      if (bestGroupRelease) {
+        selectedRelease = bestGroupRelease;
+      }
+    } catch (error) {
+      console.warn("[MB:GROUP:BROWSE:FAILED]", error);
+    }
+  }
+
+  const releaseId = selectedRelease.id;
+
+  console.log("[MB:FINAL:SELECTED]", {
+    releaseId,
+    title: selectedRelease.title,
+    formats: selectedRelease.media?.map(
+      (medium) => medium.format
+    ),
+    artwork: selectedRelease["cover-art-archive"] ?? null,
+  });
 
   const [tracksResult, coverResult] = await Promise.allSettled([
     fetchTrackList(releaseId),
@@ -219,8 +345,13 @@ export async function fetchAlbumMetadata( title: string, artist: string): Promis
     throw new Error("Both metadata request failed");
   }
 
+  const artwork = coverResult.status === "fulfilled" ? coverResult.value : {
+    coverUrl: null,
+    backCoverUrl: null,
+  };
+
   return {
     trackList: tracksResult.status === "fulfilled" ? tracksResult.value : [],
-    coverUrl: coverResult.status === "fulfilled" ? coverResult.value : null,
+    ...artwork,
   };
 }

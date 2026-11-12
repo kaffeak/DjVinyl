@@ -3,6 +3,7 @@ export interface Album {
   title: string;
   artist: string;
   url: string;
+  backCoverUrl?: string;
   sides: number;
   genres: string[];
   trackList: string[];

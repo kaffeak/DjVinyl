@@ -21,10 +21,28 @@ function scoreRelease(release: MusicBrainzRelease, requestedTitle: string, reque
     score += normalizeText(creditedArtist) === normalizeText(requestedArtist) ? 100 : -100;
   }
 
-  const isVinyl = release.media?.some((medium) => /\bvinyl\b/i.test(medium.format ?? ""));
+  const formats = release.media?.map((medium) => medium.format ?? "") ?? [];
+
+  const isVinyl = formats.some((format) => /\bvinyl\b/i.test(format));
+
+  const is12InchVinyl = formats.some((format) => /^12" vinyl$/i.test(format.trim()));
+
+  const artwork = release["cover-art-archive"];
 
   if (isVinyl) {
+    if (artwork?.front){
+      score += 10;
+    }
+
+    if (artwork?.back){
+      score += 15;
+    }
+
     score += 20;
+  }
+
+  if (is12InchVinyl) {
+    score += 5;
   }
 
   if (release.status?.toLowerCase() === "official") {
@@ -35,10 +53,10 @@ function scoreRelease(release: MusicBrainzRelease, requestedTitle: string, reque
     score += 5;
   }
 
-  if (release.score !== undefined && Number.isFinite(release.score)) {
-    const relevance = Math.max(0, Math.min(release.score, 100));
+  const relevance = Number(release.score);
 
-    score += relevance / 10;
+  if (release.score !== undefined && Number.isFinite(relevance)) {
+    score += Math.max(0, Math.min(relevance, 100)) / 10;
   }
 
   return score;

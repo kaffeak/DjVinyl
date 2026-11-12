@@ -16,6 +16,7 @@ import * as Haptics from "expo-haptics";
 import { Dimensions } from "react-native";
 import type {Album} from "@/src/types/album";
 import {parseTrack} from "@/src/utils/tracks";
+import {getDisplayedCoverUrl} from "@/src/utils/albumArtwork";
 
 const { width: screenWidth } = Dimensions.get("window");
 
@@ -46,6 +47,8 @@ const CardItem = ({index, album, shuffleCards, isTop, activeCardId}: Props) => {
 
   const visibleTracks = album.trackList?.slice(0, MAX_TRACKS) ?? [];
   const hasMore = album.trackList?.length > MAX_TRACKS;
+
+  const displayedCoverUrl = getDisplayedCoverUrl(album, showTracks);
 
   const hintStyle = useAnimatedStyle(() => ({
     opacity: 1 - overlayOpacity.value,
@@ -150,9 +153,7 @@ const CardItem = ({index, album, shuffleCards, isTop, activeCardId}: Props) => {
         >
           <Image
             source={{
-              uri: album?.url
-                ? album.url
-                : "https://placehold.co/250x250?text=No+Cover",
+              uri: displayedCoverUrl || "https://placehold.co/250x250?text=No+Cover",
               width: 250,
               height: 250,
             }}

@@ -17,6 +17,7 @@ import {LinearGradient} from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
 import type {Album} from "@/src/types/album";
 import {parseTrack} from "@/src/utils/tracks";
+import {getDisplayedCoverUrl} from "@/src/utils/albumArtwork";
 
 type AndroidColors = {
   average?: string;
@@ -67,9 +68,11 @@ export default function AlbumInfoModal({
   const [editGenres, setEditGenres] = useState<boolean>(false);
   const [newGenre, setNewGenre] = useState<string>("");
 
+  const displayedCoverUrl = album ? getDisplayedCoverUrl(album, currentPage === 1) : "";
+
   useEffect(() => {
     setImageFailed(false)
-  }, [album?.url]);
+  }, [displayedCoverUrl]);
 
   useEffect(() => {
     if(!visible) {
@@ -139,6 +142,13 @@ export default function AlbumInfoModal({
     if(newBottom !== bottom) setBottom(newBottom);
   }, [colors]);
 
+  useEffect(() => {
+    if (!visible) return;
+
+    setCurrentPage(0);
+    pagerRef.current?.setPage(0);
+  }, [visible, album?.$id]);
+
   const handleAddGenres = () => {
     if(!album) return;
     const trimmed = newGenre.trim();
@@ -191,9 +201,9 @@ export default function AlbumInfoModal({
               },
             ]}
           >
-            {album.url?.trim() && !imageFailed ? (
+            {displayedCoverUrl && !imageFailed ? (
               <Image
-                source={{ uri: album.url }}
+                source={{ uri: displayedCoverUrl }}
                 style={[styles.image, {width: cardSize, height: cardSize}]}
                 resizeMode={"cover"}
                 />

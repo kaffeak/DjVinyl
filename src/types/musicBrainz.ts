@@ -1,7 +1,7 @@
 export interface MusicBrainzRelease {
   id: string;
   title?: string;
-  score?: number;
+  score?: number | string;
   status?: string;
 
   "artist-credit"?: Array< | string | {
@@ -18,5 +18,12 @@ export interface MusicBrainzRelease {
   "release-group"?: {
     id: string;
     "primary-type"?: string;
+  };
+
+  "cover-art-archive"?: {
+    artwork?: boolean;
+    front?: boolean;
+    back?: boolean;
+    count?: number;
   };
 }

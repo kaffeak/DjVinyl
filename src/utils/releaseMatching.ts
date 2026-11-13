@@ -72,3 +72,15 @@ export function selectBestRelease(releases: MusicBrainzRelease[], title: string,
     return candidateScore > bestScore ? candidate : best;
   });
 }
+
+export function isMatchingVinylRelease(release: MusicBrainzRelease, title: string, artist: string): boolean {
+  const creditedArtist = getCreditedArtist(release);
+
+  const titleMatches = !!release.title && normalizeText(release.title) === normalizeText(title);
+
+  const artistMatches = !!creditedArtist && normalizeText(creditedArtist) === normalizeText(artist);
+
+  const isVinyl = release.media?.some((medium) => /\bvinyl\b/i.test(medium.format ?? "")) ?? false;
+
+  return titleMatches && artistMatches && isVinyl;
+}

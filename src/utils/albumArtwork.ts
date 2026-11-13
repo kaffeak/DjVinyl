@@ -4,7 +4,7 @@ export function getDisplayedCoverUrl(album: Pick<Album, "url" | "backCoverUrl">,
   const frontCover = album.url?.trim() ?? "";
   const backCover = album.backCoverUrl?.trim() ?? "";
 
-  if (showingTracks && backCover) return backCover;
+  if (showingTracks && frontCover && backCover) return backCover;
 
   return frontCover;
 }

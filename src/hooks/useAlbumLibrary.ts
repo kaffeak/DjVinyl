@@ -89,7 +89,9 @@ export function useAlbumLibrary(owner: string){
 
         if (needsCover && coverUrl) changes.url = coverUrl;
 
-        if (!album.backCoverUrl?.trim() && backCoverUrl){
+        const effectiveFrontUrl = changes.url?.trim() || album.url?.trim();
+
+        if (effectiveFrontUrl && !album.backCoverUrl?.trim() && backCoverUrl) {
           changes.backCoverUrl = backCoverUrl;
         }
 

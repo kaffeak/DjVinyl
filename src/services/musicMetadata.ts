@@ -1,5 +1,7 @@
 import {MusicBrainzRelease} from "@/src/types/musicBrainz";
 import {selectBestRelease} from "@/src/utils/releaseMatching";
+import {ArtworkCandidate, selectArtworkCandidate} from "@/src/utils/artworkSelection";
+import {Album} from "@/src/types/album";
 
 export interface AlbumMetadata {
   coverUrl: string | null;
@@ -61,6 +63,11 @@ interface ReleaseBrowseResponse {
 type  CoverImage = NonNullable<CoverArtResponse["images"]>[number];
 
 type ArtworkResult = Pick<AlbumMetadata, "coverUrl" | "backCoverUrl">;
+
+export interface AlbumArtworkLookup {
+  candidate: ArtworkCandidate | null;
+  artwork: ArtworkResult;
+}
 
 const apiHeaders = {
   "User-Agent": "DjVinyl/1.0.0 (kaffe.ak46@gmail.com)",
@@ -272,6 +279,59 @@ async function fetchCoverArt(releaseId: string, releaseGroupId?: string): Promis
   });
 
   return {coverUrl: getArtworkUrl(frontImage), backCoverUrl: getArtworkUrl(backImage)};
+}
+
+export async function fetchAlbumArtwork(album: Pick<Album, "title" | "artist" | "url" | "backCoverUrl">): Promise<AlbumArtworkLookup> {
+  const emptyResult: AlbumArtworkLookup = {
+    candidate: null,
+    artwork: {
+      coverUrl: null,
+      backCoverUrl: null,
+    },
+  };
+
+  if (album.url?.trim() && album.backCoverUrl?.trim()) return emptyResult;
+
+  const params = new URLSearchParams({
+    query: `release:${album.title} AND artist:${album.artist}`,
+    fmt: "json",
+  });
+
+  const searchUrl = `https://musicbrainz.org/ws/2/release/?${params.toString()}`;
+
+  const response = await fetchMusicBrainz(searchUrl);
+
+  if (!response.ok) {
+    throw new Error(`MusicBrainz search failed: ${response.status}`);
+  }
+
+  const data = (await response.json()) as ReleaseSearchResponse;
+
+  const searchReleases = data.releases ?? [];
+
+  const searchRelease = selectBestRelease(searchReleases, album.title, album.artist);
+
+  if (!searchRelease) return emptyResult;
+
+  const groupId = searchRelease["release-group"]?.id;
+
+  let candidates = searchReleases;
+
+  if (groupId) {
+    const groupReleases = await fetchReleaseGroupReleases(groupId);
+
+    if (groupReleases.length > 0){
+      candidates = groupReleases;
+    }
+  }
+
+  const candidate = selectArtworkCandidate(album, candidates);
+
+  if (!candidate) return emptyResult;
+
+  const artwork = await fetchCoverArt(candidate.release.id);
+
+  return {candidate, artwork};
 }
 
 export async function fetchAlbumMetadata( title: string, artist: string): Promise<AlbumMetadata> {

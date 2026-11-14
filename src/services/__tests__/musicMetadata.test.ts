@@ -1,4 +1,4 @@
-import {fetchAlbumMetadata} from "@/src/services/musicMetadata";
+import {fetchAlbumArtwork, fetchAlbumMetadata} from "@/src/services/musicMetadata";
 import {selectBestRelease} from "@/src/utils/releaseMatching";
 
 const orginalFetch = globalThis.fetch;
@@ -509,5 +509,209 @@ describe("fetchAlbumMetadata", () => {
     expect(requestedUrls.some((url) => url.includes("/ws/2/release/original-release?"))).toBe(true);
 
     expect(requestedUrls.some((url) => url.includes("coverartarchive.org/release/original-release/"))).toBe(true);
+  });
+
+  test("should skip artwork lookup when both covers exist", async () => {
+    const album = {
+      title: "Killers",
+      artist: "Iron Maiden",
+      url: "https://example.com/front.jpg",
+      backCoverUrl: "https://example.com/back.jpg",
+    };
+
+    const result = await fetchAlbumArtwork(album);
+
+    expect(result).toEqual({
+      candidate: null,
+      artwork: {
+        coverUrl: null,
+        backCoverUrl: null,
+      },
+    });
+
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  test("should fetch both covers for an incomplete album", async () => {
+    const album = {
+      title: "Killers",
+      artist: "Iron Maiden",
+      url: "https://example.com/old-front.jpg",
+      backCoverUrl: "",
+    };
+
+    const selectedRelease = {
+      id: "vinyl-with-art",
+      title: "Killers",
+      "artist-credit": [{ name: "Iron Maiden" }],
+      media: [{ format: '12" Vinyl'}],
+      "cover-art-archive": {
+        artwork: true,
+        front: true,
+        back: true,
+      },
+    };
+
+    fetchMock.mockImplementation(async (input) => {
+      const url = String(input);
+
+      if (url.includes("release-group=group-123")) {
+        return mockResponse({
+          releases: [selectedRelease],
+        });
+      }
+
+      if (url.includes("/ws/2/release/?")) {
+        return mockResponse({
+          releases: [
+            {
+              id: "vinyl-no-art",
+              title: "Killers",
+              "artist-credit": [{ name: "Iron Maiden" }],
+              "release-group": { id: "group-123" },
+              media: [{ format: "Vinyl" }],
+              score: "100",
+            },
+          ],
+        });
+      }
+
+      if (
+        url.includes(
+          "coverartarchive.org/release/vinyl-with-art/"
+        )
+      ) {
+        return mockResponse({
+          images: [
+            {
+              front: true,
+              back: false,
+              thumbnails: {
+                "500": "https://example.com/new-front.jpg",
+              },
+            },
+            {
+              front: false,
+              back: true,
+              thumbnails: {
+                "500": "https://example.com/new-back.jpg",
+              },
+            },
+          ],
+        });
+      }
+
+      throw new Error(`Unexpected request: ${url}`);
+    });
+
+    const resultPromise = fetchAlbumArtwork(album);
+
+    const assertion = expect(resultPromise).resolves.toEqual({
+      candidate: {
+        kind: "pair",
+        release: selectedRelease,
+      },
+      artwork: {
+        coverUrl: "https://example.com/new-front.jpg",
+        backCoverUrl: "https://example.com/new-back.jpg",
+      },
+    });
+
+    await jest.runAllTimersAsync();
+    await assertion;
+
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+
+    const requestedUrls = fetchMock.mock.calls.map(([input]) => String(input));
+
+    expect(requestedUrls.some((url) => url.includes("inc=recordings"))).toBe(false);
+  });
+
+  test("should fetch a back-only release when a front cover already exists", async () => {
+    const album = {
+      title: "Killers",
+      artist: "Iron Maiden",
+      url: "https://example.com/existing-front.jpg",
+      backCoverUrl: "",
+    };
+
+    const selectedRelease = {
+      id: "vinyl-with-art",
+      title: "Killers",
+      "artist-credit": [{ name: "Iron Maiden" }],
+      media: [{ format: '12" Vinyl'}],
+      "cover-art-archive": {
+        artwork: true,
+        front: false,
+        back: true,
+      },
+    };
+
+    fetchMock.mockImplementation(async (input) => {
+      const url = String(input);
+
+      if (url.includes("release-group=group-123")) {
+        return mockResponse({
+          releases: [selectedRelease],
+        });
+      }
+
+      if (url.includes("/ws/2/release/?")) {
+        return mockResponse({
+          releases: [
+            {
+              id: "vinyl-no-art",
+              title: "Killers",
+              "artist-credit": [{ name: "Iron Maiden" }],
+              "release-group": { id: "group-123" },
+              media: [{ format: "Vinyl" }],
+              score: "100",
+            },
+          ],
+        });
+      }
+
+      if (
+        url.includes(
+          "coverartarchive.org/release/vinyl-with-art/"
+        )
+      ) {
+        return mockResponse({
+          images: [
+            {
+              front: false,
+              back: true,
+              thumbnails: {
+                "500": "https://example.com/new-back.jpg",
+              },
+            },
+          ],
+        });
+      }
+
+      throw new Error(`Unexpected request: ${url}`);
+    });
+
+    const resultPromise = fetchAlbumArtwork(album);
+
+    const assertion = expect(resultPromise).resolves.toEqual({
+      candidate: {
+        kind: "back-only",
+        release: selectedRelease,
+      },
+      artwork: {
+        coverUrl: null,
+        backCoverUrl: "https://example.com/new-back.jpg",
+      },
+    });
+
+    await jest.runAllTimersAsync();
+    await assertion;
+
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+
+    const requestedUrls = fetchMock.mock.calls.map(([input]) => String(input));
+
+    expect(requestedUrls.some((url) => url.includes("inc=recordings"))).toBe(false);
   });
 });

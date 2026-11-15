@@ -1,8 +1,9 @@
 import {Album, NewAlbumData} from "@/src/types/album";
 import {useCallback, useEffect, useMemo, useRef, useState} from "react";
 import {getMetadataNeeds} from "@/src/utils/albumMetadata";
-import {fetchAlbumMetadata} from "@/src/services/musicMetadata";
+import {fetchAlbumArtwork, fetchAlbumMetadata} from "@/src/services/musicMetadata";
 import {createAlbum, deleteAlbum, listAlbums, updateAlbum} from "@/src/services/albumRepository";
+import {buildArtworkChanges} from "@/src/utils/artworkChanges";
 
 type LibraryAlbum = Album & {$id: string};
 
@@ -10,6 +11,8 @@ type MetadataRetryInfo = {
   attempts: number;
   nextAllowedAt: number;
 };
+
+export type ArtworkRefreshResult = | "updated" | "unchanged" | "skipped" | "busy" | "failed";
 
 const MAX_METADATA_ATTEMPTS = 2;
 const METADATA_COOLDOWN_MS = 5 * 60 * 1000;
@@ -125,6 +128,62 @@ export function useAlbumLibrary(owner: string){
       }
     },
     [canLoadMetadata]
+  );
+
+  const refreshAlbumArtwork = useCallback(
+    async (albumId: string): Promise<ArtworkRefreshResult> => {
+      if (!owner || loadedLibraryId !== owner) return "skipped";
+
+      const album = albums.find((item) => item.$id === albumId);
+
+      if (!album) return "skipped";
+
+      const hasFront = Boolean(album.url?.trim());
+      const hasBack = Boolean(album.backCoverUrl?.trim());
+
+      if (hasFront && hasBack) return "skipped";
+
+      const libraryId = owner;
+      const key = `${libraryId}:${album.$id}`;
+
+      if (metadataInFlight.current.has(key)) return "busy";
+
+      metadataInFlight.current.add(key);
+
+      try {
+        const {candidate, artwork} = await fetchAlbumArtwork(album);
+
+        const changes = buildArtworkChanges(album, candidate, artwork);
+
+        console.log("[ARTWORK:STATE UPDATE]", {
+          activeLibrary: activeLibraryRef.current,
+          libraryId,
+          changes,
+        });
+
+        if (Object.keys(changes).length === 0) return "unchanged";
+
+        if (activeLibraryRef.current !== libraryId) return "skipped";
+
+        await updateAlbum(libraryId, album.$id, changes);
+
+        if (activeLibraryRef.current === libraryId) {
+          setAlbums((previous) => previous.map((item) => item.$id === album.$id ? { ...item, ...changes} : item));
+        }
+
+        return "updated";
+      } catch (error) {
+        console.error(
+          "[ARTWORK:REFRESH:FAILED]",
+          album.title,
+          error
+        );
+
+        return "failed";
+      } finally {
+        metadataInFlight.current.delete(key);
+      }
+    }, [owner, loadedLibraryId, albums]
   );
 
   useEffect(() => {
@@ -262,5 +321,6 @@ export function useAlbumLibrary(owner: string){
     addAlbum,
     removeAlbum,
     updateGenres,
+    refreshAlbumArtwork,
   };
 }

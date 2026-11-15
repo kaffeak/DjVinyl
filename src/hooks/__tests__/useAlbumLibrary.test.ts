@@ -7,9 +7,7 @@ import {
 import { useAlbumLibrary} from "@/src/hooks/useAlbumLibrary";
 import {createAlbum, deleteAlbum, listAlbums, updateAlbum} from "@/src/services/albumRepository";
 import {Album} from "@/src/types/album";
-import {fetchAlbumMetadata} from "@/src/services/musicMetadata";
-import {list} from "postcss";
-import {classPrivateMethod} from "@babel/types";
+import {fetchAlbumMetadata, fetchAlbumArtwork} from "@/src/services/musicMetadata";
 
 type LibraryAlbum = Album & { $id: string };
 
@@ -60,6 +58,7 @@ jest.mock("@/src/services/albumRepository", () => ({
 
 jest.mock("@/src/services/musicMetadata", () => ({
   fetchAlbumMetadata: jest.fn(),
+  fetchAlbumArtwork: jest.fn(),
 }));
 
 function createDeferred<T>() {
@@ -88,10 +87,18 @@ describe("useAlbumLibrary", () => {
       backCoverUrl: null,
       trackList: [],
     });
+
+    jest.mocked(fetchAlbumArtwork).mockResolvedValue({
+      candidate: null,
+      artwork: {
+        coverUrl: null,
+        backCoverUrl: null,
+      },
+    });
   });
 
   afterEach(() => {
-    jest.resetAllMocks();
+    jest.restoreAllMocks();
   });
 
   test("should load albums from the selected library", async () => {
@@ -593,5 +600,232 @@ describe("useAlbumLibrary", () => {
     });
 
     expect(jest.mocked(updateAlbum).mock.calls[0][2]).not.toHaveProperty("url");
+  });
+
+  test("should skip artwork refresh when both covers exist", async () => {
+    jest.mocked(listAlbums).mockResolvedValue(asDocument([albumOne]));
+
+    const {result} = await renderHook(() => useAlbumLibrary("library-A"));
+
+    await waitFor(() => {
+      expect(result.current.loadedLibraryId).toBe("library-A");
+    });
+
+    let status = "";
+
+    await act(async () => {
+      status = await result.current.refreshAlbumArtwork("album-1");
+    });
+
+    expect(status).toEqual("skipped");
+
+    expect(fetchAlbumArtwork).not.toHaveBeenCalled();
+
+    expect(updateAlbum).not.toHaveBeenCalled();
+  });
+
+  test("should update both covers without modifying tracks", async () => {
+    const frontOnlyAlbum = {
+      ...albumOne,
+      backCoverUrl: "",
+    };
+
+    jest.mocked(listAlbums).mockResolvedValue(asDocument([frontOnlyAlbum]));
+
+    jest.mocked(fetchAlbumArtwork).mockResolvedValue({
+      candidate: {
+        kind: "pair",
+        release: {
+          id: "vinyl-release-123",
+        },
+      },
+      artwork: {
+        coverUrl: "https://example.com/new-front.jpg",
+        backCoverUrl: "https://example.com/new-back.jpg",
+      },
+    });
+
+    const {result} = await renderHook(() => useAlbumLibrary("library-A"));
+
+    await waitFor(() => {
+      expect(result.current.loadedLibraryId).toBe("library-A");
+    });
+
+    let status = "";
+
+    await act(async () => {
+      status = await result.current.refreshAlbumArtwork("album-1");
+    });
+
+    expect(status).toEqual("updated");
+
+    expect(fetchAlbumArtwork).toHaveBeenCalledWith(frontOnlyAlbum);
+
+    expect(updateAlbum).toHaveBeenCalledWith("library-A", "album-1", {
+      url: "https://example.com/new-front.jpg",
+      backCoverUrl: "https://example.com/new-back.jpg",
+    });
+
+    expect(result.current.albums[0]).toEqual(expect.objectContaining({
+      $id: "album-1",
+      url: "https://example.com/new-front.jpg",
+      backCoverUrl: "https://example.com/new-back.jpg",
+      trackList: ["Track One - 3:15"],
+    }));
+  });
+
+  test("should update only back cover", async () => {
+    const frontOnlyAlbum = {
+      ...albumOne,
+      backCoverUrl: "",
+    };
+
+    jest.mocked(listAlbums).mockResolvedValue(asDocument([frontOnlyAlbum]));
+
+    jest.mocked(fetchAlbumArtwork).mockResolvedValue({
+      candidate: {
+        kind: "back-only",
+        release: {
+          id: "vinyl-release-123",
+        },
+      },
+      artwork: {
+        coverUrl: "",
+        backCoverUrl: "https://example.com/new-back.jpg",
+      },
+    });
+
+    const {result} = await renderHook(() => useAlbumLibrary("library-A"));
+
+    await waitFor(() => {
+      expect(result.current.loadedLibraryId).toBe("library-A");
+    });
+
+    let status = "";
+
+    await act(async () => {
+      status = await result.current.refreshAlbumArtwork("album-1");
+    });
+
+    expect(status).toEqual("updated");
+
+    expect(fetchAlbumArtwork).toHaveBeenCalledWith(frontOnlyAlbum);
+
+    expect(updateAlbum).toHaveBeenCalledWith("library-A", "album-1", {
+      backCoverUrl: "https://example.com/new-back.jpg",
+    });
+
+    expect(result.current.albums[0]).toEqual(expect.objectContaining({
+      $id: "album-1",
+      url: "https://example.com/cover1.jpg",
+      backCoverUrl: "https://example.com/new-back.jpg",
+      trackList: ["Track One - 3:15"],
+    }));
+  });
+
+  test("should not update an album if Musicbrainz has a failure", async () => {
+    jest.spyOn(console, "error").mockImplementation(() => {});
+
+    const frontOnlyAlbum = {
+      ...albumOne,
+      backCoverUrl: "",
+    };
+
+    jest.mocked(listAlbums).mockResolvedValue(asDocument([frontOnlyAlbum]));
+
+    jest.mocked(fetchAlbumArtwork).mockRejectedValue(new Error("MusicBrainz unavailable"));
+
+    const {result} = await renderHook(() => useAlbumLibrary("library-A"));
+
+    await waitFor(() => {
+      expect(result.current.loadedLibraryId).toBe("library-A");
+    });
+
+    let status = "";
+
+    await act(async () => {
+      status = await result.current.refreshAlbumArtwork("album-1");
+    });
+
+    expect(status).toEqual("failed");
+
+    expect(fetchAlbumArtwork).toHaveBeenCalledWith(frontOnlyAlbum);
+
+    expect(updateAlbum).not.toHaveBeenCalled();
+
+    expect(result.current.albums[0]).toEqual(expect.objectContaining(frontOnlyAlbum));
+  });
+
+  test("should result in busy when album is already being refreshed", async () => {
+    const frontOnlyAlbum = {
+      ...albumOne,
+      backCoverUrl: "",
+    };
+
+    jest.mocked(listAlbums).mockResolvedValue(asDocument([frontOnlyAlbum]));
+
+    type ArtworkResult = Awaited<ReturnType<typeof fetchAlbumArtwork>>;
+
+    const firstAttempt = createDeferred<ArtworkResult>();
+
+
+    jest.mocked(fetchAlbumArtwork).mockReturnValueOnce(firstAttempt.promise);
+
+    const {result} = await renderHook(({owner}: {owner: string}) => useAlbumLibrary(owner), {initialProps: {owner: "library-A"},});
+
+    await waitFor(() => {
+      expect(result.current.loadedLibraryId).toBe("library-A");
+    });
+
+   let firstStatus = "";
+   let secondStatus = "";
+
+   await act(async () => {
+     const firstRefresh = result.current.refreshAlbumArtwork("album-1");
+
+     expect(fetchAlbumArtwork).toHaveBeenCalledTimes(1);
+
+     secondStatus = await result.current.refreshAlbumArtwork("album-1");
+
+     expect(secondStatus).toBe("busy");
+
+     expect(fetchAlbumArtwork).toHaveBeenCalledTimes(1);
+
+     firstAttempt.resolve({
+       candidate: {
+         kind: "pair",
+         release: {
+           id: "vinyl-release-123",
+         },
+       },
+       artwork: {
+         coverUrl: "https://example.com/new-front.jpg",
+         backCoverUrl: "https://example.com/new-back.jpg",
+       },
+     });
+
+     firstStatus = await firstRefresh;
+   });
+
+    expect(firstStatus).toBe("updated");
+    expect(secondStatus).toBe("busy");
+
+    expect(fetchAlbumArtwork).toHaveBeenCalledTimes(1);
+
+    expect(updateAlbum).toHaveBeenCalledWith(
+      "library-A",
+      "album-1",
+      {
+        url: "https://example.com/new-front.jpg",
+        backCoverUrl: "https://example.com/new-back.jpg",
+      }
+    );
+
+    expect(result.current.albums[0]).toEqual(
+      expect.objectContaining({
+        url: "https://example.com/new-front.jpg",
+        backCoverUrl: "https://example.com/new-back.jpg",
+      })
+    );
   });
 });

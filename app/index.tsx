@@ -15,9 +15,12 @@ import { useAlbumLibrary} from "@/src/hooks/useAlbumLibrary";
 import { useAlbumDeck} from "@/src/hooks/useAlbumDeck";
 
 const LAST_LIBRARY_KEY = "lastLibrary";
+const RUN_ARTWORK_MIGRATION = true;
 
 export default function Index() {
   const [owner, setOwner] = useState("");
+
+  const migratedLibraries = useRef(new Set<string>());
 
   const {
     albums,
@@ -28,6 +31,7 @@ export default function Index() {
     addAlbum,
     removeAlbum,
     updateGenres,
+    runArtworkMigration,
   } = useAlbumLibrary(owner);
 
   const {
@@ -54,6 +58,14 @@ export default function Index() {
   const [settingsMenu, setSettingsMenu] = useState(false);
   const activeLibraryRef = useRef(owner);
   activeLibraryRef.current = owner;
+
+  useEffect(() => {
+    if (!RUN_ARTWORK_MIGRATION || !owner || isLoading || loadedLibraryId !== owner || migratedLibraries.current.has(owner)) return;
+
+    migratedLibraries.current.add(owner);
+
+    void runArtworkMigration();
+  }, [owner, isLoading, loadedLibraryId, runArtworkMigration]);
 
   useEffect(() => {
     (async () => {

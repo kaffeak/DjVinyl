@@ -828,4 +828,183 @@ describe("useAlbumLibrary", () => {
       })
     );
   });
+
+  test("should skip an artwork refresh after switching libraries and clear in-flight state", async () => {
+    const frontOnlyAlbum = {
+      ...albumOne,
+      backCoverUrl: "",
+    };
+
+    jest.mocked(listAlbums).mockImplementation(async (libraryId) => {
+      if (libraryId === "library-A") {
+        return asDocument([frontOnlyAlbum]);
+      }
+
+      if (libraryId === "library-B") {
+        return asDocument([albumTwo]);
+      }
+
+      return asDocument([]);
+    });
+
+    type ArtworkResult = Awaited<ReturnType<typeof fetchAlbumArtwork>>;
+
+    const pendingArtwork = createDeferred<ArtworkResult>();
+
+    jest.mocked(fetchAlbumArtwork).mockReturnValueOnce(pendingArtwork.promise);
+
+    const { result, rerender } = await renderHook(({ owner }: { owner: string}) => useAlbumLibrary(owner), { initialProps: { owner: "library-A"},});
+
+    await waitFor(() => {
+      expect(result.current.loadedLibraryId).toBe("library-A");
+      expect(result.current.albums[0]?.$id).toBe("album-1");
+    });
+
+    const firstRefresh = result.current.refreshAlbumArtwork("album-1");
+
+    expect(fetchAlbumArtwork).toHaveBeenCalledTimes(1);
+
+    await rerender({ owner: "library-B"});
+
+    await waitFor(() => {
+      expect(result.current.loadedLibraryId).toBe("library-B");
+
+      expect(result.current.albums.map((album) => album.$id)).toEqual(["album-2"]);
+    });
+
+    let firstStatus = "";
+
+    await act(async () => {
+      pendingArtwork.resolve({
+        candidate: {
+          kind: "pair",
+          release: {
+            id: "vinyl-release-123",
+          },
+        },
+        artwork: {
+          coverUrl: "https://example.com/new-front.jpg",
+          backCoverUrl: "https://example.com/new-back.jpg",
+        },
+      });
+
+      firstStatus = await firstRefresh;
+    });
+
+    expect(firstStatus).toBe("skipped");
+
+    expect(updateAlbum).not.toHaveBeenCalled();
+
+    expect(result.current.loadedLibraryId).toBe("library-B");
+
+    expect(result.current.albums).toHaveLength(1);
+
+    expect(result.current.albums[0]).toEqual(expect.objectContaining({
+      $id: "album-2",
+      url: "https://example.com/cover2.jpg",
+      backCoverUrl: "https://example.com/backcover2.jpg",
+    }));
+
+    await rerender({ owner: "library-A" });
+
+    await waitFor(() => {
+      expect(result.current.loadedLibraryId).toBe("library-A");
+      expect(result.current.albums[0]?.$id).toBe("album-1");
+    });
+
+    let secondStatus = "";
+
+    await act(async () => {
+      secondStatus = await result.current.refreshAlbumArtwork("album-1");
+    });
+
+    expect(secondStatus).toBe("unchanged");
+
+    expect(fetchAlbumArtwork).toHaveBeenCalledTimes(2);
+
+    expect(updateAlbum).not.toHaveBeenCalled();
+  });
+
+  test("should not update the new library after an Appwrite request completes", async () => {
+    const frontOnlyAlbum = {
+      ...albumOne,
+      backCoverUrl: "",
+    };
+
+    jest.mocked(listAlbums).mockImplementation(async (libraryId) => {
+      if (libraryId === "library-A") return asDocument([frontOnlyAlbum]);
+
+      if (libraryId === "library-B") return asDocument([albumTwo]);
+
+      return asDocument([]);
+    });
+
+    jest.mocked(fetchAlbumArtwork).mockResolvedValue({
+      candidate: {
+        kind: "pair",
+        release: {
+          id: "vinyl-release-123",
+        },
+      },
+      artwork: {
+        coverUrl: "https://example.com/new-front.jpg",
+        backCoverUrl: "https://example.com/new-back.jpg",
+      },
+    });
+
+    type UpdateResult = Awaited<ReturnType<typeof updateAlbum>>;
+
+    const pendingUpdate = createDeferred<UpdateResult>();
+
+    jest.mocked(updateAlbum).mockReturnValueOnce(pendingUpdate.promise);
+
+    const { result, rerender } = await renderHook(({ owner }: { owner: string}) => useAlbumLibrary(owner), { initialProps: { owner: "library-A"},});
+
+    await waitFor(() => {
+      expect(result.current.loadedLibraryId).toBe("library-A");
+      expect(result.current.albums[0]?.$id).toBe("album-1");
+    });
+
+    const refreshPromise = result.current.refreshAlbumArtwork("album-1");
+
+    await waitFor(() => {
+      expect(updateAlbum).toHaveBeenCalledWith("library-A", "album-1", {
+        url: "https://example.com/new-front.jpg",
+        backCoverUrl: "https://example.com/new-back.jpg",
+      });
+    });
+
+    await rerender({ owner: "library-B" });
+
+    await waitFor(() => {
+      expect(result.current.loadedLibraryId).toBe("library-B");
+      expect(result.current.albums[0]?.$id).toBe("album-2");
+    });
+
+    let status = "";
+
+    await act(async () => {
+      pendingUpdate.resolve(undefined);
+      status = await refreshPromise;
+    });
+
+    expect(status).toBe("updated");
+
+    expect(updateAlbum).toHaveBeenCalledTimes(1);
+
+    expect(updateAlbum).toHaveBeenCalledWith("library-A", "album-1", {
+      url: "https://example.com/new-front.jpg",
+      backCoverUrl: "https://example.com/new-back.jpg",
+    });
+
+    expect(result.current.loadedLibraryId).toBe("library-B");
+
+    expect(result.current.albums).toHaveLength(1);
+
+    expect(result.current.albums[0]).toEqual(expect.objectContaining({
+      $id: "album-2",
+      url: "https://example.com/cover2.jpg",
+      backCoverUrl: "https://example.com/backcover2.jpg",
+    }));
+  });
 });

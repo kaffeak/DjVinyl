@@ -14,6 +14,17 @@ type MetadataRetryInfo = {
 
 export type ArtworkRefreshResult = | "updated" | "unchanged" | "skipped" | "busy" | "failed";
 
+export type BulkArtworkProgress = {
+  total: number;
+  processed: number;
+  updated: number;
+  unchanged: number;
+  skipped: number;
+  busy: number;
+  failed: number;
+  cancelled: boolean;
+};
+
 const MAX_METADATA_ATTEMPTS = 2;
 const METADATA_COOLDOWN_MS = 5 * 60 * 1000;
 const MAX_AUTO_RETRIES_PER_LOAD = 3;
@@ -23,6 +34,13 @@ export function useAlbumLibrary(owner: string){
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loadedLibraryId, setLoadedLibraryId] = useState<string | null>(null);
+
+  const [isBuilkArtworkRefreshing, setIsBuilkArtworkRefreshing] = useState(false);
+  const [bulkArtworkProgress, setBulkArtworkProgress] = useState<BulkArtworkProgress | null>(null);
+  const bulkArtworkInFlight = useRef(false);
+  const albumsRef = useRef(albums);
+  albumsRef.current = albums;
+  const bulkArtworkRunning = useRef(false);
 
   const metadataInFlight = useRef(new Set<string>());
   const metadataRetryInfo = useRef(new Map<string, MetadataRetryInfo>());
@@ -132,9 +150,11 @@ export function useAlbumLibrary(owner: string){
 
   const refreshAlbumArtwork = useCallback(
     async (albumId: string): Promise<ArtworkRefreshResult> => {
-      if (!owner || loadedLibraryId !== owner) return "skipped";
+      //if (!owner || loadedLibraryId !== owner) return "skipped";
+      if (!owner || loadedLibraryId !== owner || activeLibraryRef.current !== owner) return "skipped";
 
-      const album = albums.find((item) => item.$id === albumId);
+      //const album = albums.find((item) => item.$id === albumId);
+      const album = albumsRef.current.find((item) => item.$id === albumId);
 
       if (!album) return "skipped";
 
@@ -183,8 +203,133 @@ export function useAlbumLibrary(owner: string){
       } finally {
         metadataInFlight.current.delete(key);
       }
-    }, [owner, loadedLibraryId, albums]
+    }, [owner, loadedLibraryId] //[owner, loadedLibraryId, albums]
   );
+
+  const runArtworkMigration = useCallback(async () => {
+    if (!owner || loadedLibraryId !== owner || activeLibraryRef.current !== owner || bulkArtworkInFlight.current) {
+      console.log("[ARTWORK:MIGRATION] Not ready or already running");
+      return;
+    }
+
+    const libraryId = owner;
+
+    const incompleteAlbums = albums.filter(
+      (album) =>
+        !album.url?.trim() ||
+        !album.backCoverUrl?.trim()
+    );
+
+    const summary: Record<ArtworkRefreshResult, number> = {
+      updated: 0,
+      unchanged: 0,
+      skipped: 0,
+      busy: 0,
+      failed: 0,
+    };
+
+    bulkArtworkRunning.current = true;
+
+    console.log(
+      `[ARTWORK:MIGRATION] Starting: ${incompleteAlbums.length} albums`,
+      { libraryId }
+    );
+
+    try {
+      for (const [index, album] of incompleteAlbums.entries()) {
+        // Stop if the user switches libraries.
+        if (activeLibraryRef.current !== libraryId) {
+          console.warn(
+            "[ARTWORK:MIGRATION] Cancelled: library changed"
+          );
+          break;
+        }
+
+        console.log(
+          `[ARTWORK:MIGRATION] ${index + 1}/${incompleteAlbums.length}`,
+          `${album.artist} - ${album.title}`
+        );
+
+        const result = await refreshAlbumArtwork(album.$id);
+
+        summary[result]++;
+
+        console.log(
+          `[ARTWORK:MIGRATION] Result: ${result}`,
+          `${album.artist} - ${album.title}`
+        );
+
+        if (activeLibraryRef.current !== libraryId) {
+          console.warn(
+            "[ARTWORK:MIGRATION] Stopped after library change"
+          );
+          break;
+        }
+      }
+    } finally {
+      bulkArtworkRunning.current = false;
+
+      console.log("[ARTWORK:MIGRATION] Finished", {
+        libraryId,
+        totalEligible: incompleteAlbums.length,
+        ...summary,
+      });
+    }
+  }, [owner, loadedLibraryId, albums, refreshAlbumArtwork]);
+
+  const refreshMissingArtwork = useCallback( async (): Promise<BulkArtworkProgress | null> => {
+    if (!owner || loadedLibraryId !== owner || activeLibraryRef.current !== owner || bulkArtworkInFlight.current) return null;
+
+    const libraryId = owner;
+
+    const eligibleAlbums = albums.filter((album) => {
+      const hasFront = Boolean(album.url?.trim());
+      const hasBack = Boolean(album.backCoverUrl?.trim());
+
+      return !hasFront || !hasBack;
+    });
+
+    const progress: BulkArtworkProgress = {
+      total: eligibleAlbums.length,
+      processed: 0,
+      updated: 0,
+      unchanged: 0,
+      skipped: 0,
+      busy: 0,
+      failed: 0,
+      cancelled: false,
+    };
+
+    bulkArtworkInFlight.current = true;
+    setIsBuilkArtworkRefreshing(true);
+    setBulkArtworkProgress({ ...progress});
+
+    try {
+      for (const album of eligibleAlbums) {
+        if (activeLibraryRef.current !== libraryId) {
+          progress.cancelled = true;
+          break;
+        }
+
+        const result = await refreshAlbumArtwork(album.$id);
+
+        if (activeLibraryRef.current !== libraryId) {
+          progress.cancelled = true;
+          break;
+        }
+
+        progress.processed += 1;
+        progress[result] += 1;
+
+        setBulkArtworkProgress({ ...progress});
+      }
+
+      return {...progress};
+    } finally {
+      bulkArtworkInFlight.current = false;
+      setIsBuilkArtworkRefreshing(false);
+    }
+  }, [owner, loadedLibraryId, albums, refreshAlbumArtwork]);
 
   useEffect(() => {
     let cancelled = false;
@@ -322,5 +467,11 @@ export function useAlbumLibrary(owner: string){
     removeAlbum,
     updateGenres,
     refreshAlbumArtwork,
+
+    refreshMissingArtwork,
+    isBuilkArtworkRefreshing,
+    bulkArtworkProgress,
+
+    runArtworkMigration,
   };
 }

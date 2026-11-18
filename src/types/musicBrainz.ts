@@ -27,3 +27,5 @@ export interface MusicBrainzRelease {
     count?: number;
   };
 }
+
+export type MusicBrainzReleaseGroup = Pick<MusicBrainzRelease, "id" | "title" | "artist-credit" | "score">;

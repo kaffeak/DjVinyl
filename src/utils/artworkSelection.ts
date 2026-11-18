@@ -1,6 +1,12 @@
 import {Album} from "@/src/types/album";
 import {MusicBrainzRelease} from "@/src/types/musicBrainz";
-import {isMatchingVinylRelease, selectBestRelease} from "@/src/utils/releaseMatching";
+import {
+  isMatchingCdRelease,
+  isMatchingVinylRelease,
+  rankReleases,
+  selectBestRelease
+} from "@/src/utils/releaseMatching";
+import {release} from "node:os";
 
 type ArtworkAlbum = Pick<Album, "title" | "artist" | "url" | "backCoverUrl">;
 
@@ -16,32 +22,57 @@ export type ArtworkCandidate =
     release: MusicBrainzRelease;
 };
 
-export function selectArtworkCandidate(album: ArtworkAlbum, releases: MusicBrainzRelease[]): ArtworkCandidate | null {
+export function rankArtworkCandidates(album: ArtworkAlbum, releases: MusicBrainzRelease[]): ArtworkCandidate[] {
   const hasFront = Boolean(album.url?.trim());
   const hasBack = Boolean(album.backCoverUrl?.trim());
 
-  if (hasFront && hasBack) return null;
+  if (hasFront && hasBack) return [];
 
-  const candidates = releases.filter((release) => isMatchingVinylRelease(release, album.title, album.artist));
+  const vinylReleases = releases.filter((release) => isMatchingVinylRelease(release, album.title, album.artist));
 
-  const findBest = (predicate: (release: MusicBrainzRelease) => boolean)=> selectBestRelease(candidates.filter(predicate), album.title, album.artist);
+  const vinylIds = new Set(vinylReleases.map((release) => release.id));
 
-  const pair = findBest((release) => release["cover-art-archive"]?.front === true && release["cover-art-archive"]?.back === true);
+  const cdReleases = releases.filter((release) => !vinylIds.has(release.id) && isMatchingCdRelease(release, album.title, album.artist));
 
-  if (pair) {
-    return {
-      kind: "pair",
-      release: pair,
-    };
+  const candidates: ArtworkCandidate[] = [];
+  const addedIds = new Set<string>();
+
+  const addCandidates = (kind: ArtworkCandidate["kind"], source: MusicBrainzRelease[], predicate: (release: MusicBrainzRelease) => boolean) => {
+    const ranked = rankReleases(source.filter(predicate), album.title, album.artist);
+
+    for (const release of ranked) {
+      if (addedIds.has(release.id)) continue;
+
+      addedIds.add(release.id);
+      candidates.push({kind, release});
+    }
+  };
+
+  const hasPair = (release: MusicBrainzRelease) => release["cover-art-archive"]?.front === true && release["cover-art-archive"]?.back === true;
+
+  const isBackOnly = (release: MusicBrainzRelease) => release["cover-art-archive"]?.front !== true && release["cover-art-archive"]?.back === true;
+
+  const isFrontOnly = (release: MusicBrainzRelease) => release["cover-art-archive"]?.front === true && release["cover-art-archive"]?.back !== true;
+
+  addCandidates("pair", vinylReleases, hasPair);
+
+  if (hasFront){
+    addCandidates("back-only", vinylReleases, isBackOnly);
+
+    addCandidates("pair", cdReleases, hasPair);
+
+    addCandidates("back-only", cdReleases, isBackOnly);
+  } else {
+    addCandidates("pair", cdReleases, hasPair);
+
+    addCandidates("front-only", vinylReleases, isFrontOnly);
+
+    addCandidates("front-only", cdReleases, isFrontOnly);
   }
 
-  if (hasFront) {
-    const backOnly = findBest((release) => release["cover-art-archive"]?.back === true && release["cover-art-archive"]?.front !== true);
+  return candidates;
+}
 
-    return backOnly ? { kind: "back-only", release: backOnly} : null;
-  }
-
-  const frontOnly = findBest((release) => release["cover-art-archive"]?.front === true);
-
-  return frontOnly ? { kind: "front-only", release: frontOnly} : null;
+export function selectArtworkCandidate(album: ArtworkAlbum, releases: MusicBrainzRelease[]): ArtworkCandidate | null {
+  return rankArtworkCandidates(album, releases)[0] ?? null;
 }

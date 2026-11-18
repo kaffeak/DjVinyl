@@ -1,4 +1,4 @@
-import { selectBestRelease } from "../releaseMatching";
+import {hasSingleTitleTypo, selectBestRelease} from "../releaseMatching";
 import type { MusicBrainzRelease } from "@/src/types/musicBrainz";
 
 function createRelease(
@@ -110,5 +110,98 @@ describe("selectBestRelease", () => {
     const result = selectBestRelease([noArtwork, completeArtwork], "The Last in Line", "Dio");
 
     expect(result?.id).toBe("complete-artwork");
-  })
+  });
+
+  describe("hasSingleTitleTypo", () => {
+    test("should accept a single character insertion", () => {
+      expect(
+        hasSingleTitleTypo(
+          "CARLIFORNIA GIRLS",
+          "California Girls"
+        )
+      ).toBe(true);
+    });
+
+    test("should accept a single character substitution", () => {
+      expect(
+        hasSingleTitleTypo(
+          "Californix Girls",
+          "California Girls"
+        )
+      ).toBe(true);
+    });
+
+    test("should reject identical titles", () => {
+      expect(
+        hasSingleTitleTypo(
+          "California Girls",
+          "California Girls"
+        )
+      ).toBe(false);
+    });
+
+    test("should reject unrelated album titles", () => {
+      expect(
+        hasSingleTitleTypo(
+          "Take the Heat Off Me",
+          "Daddy Cool"
+        )
+      ).toBe(false);
+    });
+
+    test("should reject titles with different word counts", () => {
+      expect(
+        hasSingleTitleTypo(
+          "The Dream",
+          "The Dream Deluxe"
+        )
+      ).toBe(false);
+    });
+
+    test("should reject titles with multiple spelling mistakes", () => {
+      expect(
+        hasSingleTitleTypo(
+          "Carlifornia Girrls",
+          "California Girls"
+        )
+      ).toBe(false);
+    });
+
+    test("should reject changes to album numbers", () => {
+      expect(
+        hasSingleTitleTypo(
+          "Album 17",
+          "Album 18"
+        )
+      ).toBe(false);
+    });
+
+    test("should reject changes to short words", () => {
+      expect(
+        hasSingleTitleTypo(
+          "California Girls",
+          "California Gills"
+        )
+      ).toBe(false);
+    });
+
+    test("should reject two-character transpositions", () => {
+      expect(
+        hasSingleTitleTypo(
+          "Californai Girls",
+          "California Girls"
+        )
+      ).toBe(false);
+    });
+
+    test("should ignore capitalization and punctuation", () => {
+      expect(
+        hasSingleTitleTypo(
+          "CALIFORNIA-GIRLS",
+          "California Girls"
+        )
+      ).toBe(false);
+    });
+  });
+
 });

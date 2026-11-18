@@ -1,6 +1,11 @@
-import {MusicBrainzRelease} from "@/src/types/musicBrainz";
-import {selectBestRelease} from "@/src/utils/releaseMatching";
-import {ArtworkCandidate, selectArtworkCandidate} from "@/src/utils/artworkSelection";
+import {MusicBrainzRelease, MusicBrainzReleaseGroup} from "@/src/types/musicBrainz";
+import {
+  isMatchingAlbumIdentity,
+  isMatchingAlbumWithSingleTypo,
+  normalizeText,
+  selectBestRelease
+} from "@/src/utils/releaseMatching";
+import {ArtworkCandidate, rankArtworkCandidates, selectArtworkCandidate} from "@/src/utils/artworkSelection";
 import {Album} from "@/src/types/album";
 
 export interface AlbumMetadata {
@@ -11,6 +16,10 @@ export interface AlbumMetadata {
 
 interface ReleaseSearchResponse {
   releases?: MusicBrainzRelease[];
+}
+
+interface ReleaseGroupSearchResponse {
+  "release-groups"?: MusicBrainzReleaseGroup[];
 }
 
 interface Track {
@@ -78,36 +87,207 @@ const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve,
 
 let requestQueue: Promise<unknown> = Promise.resolve();
 
-async function fetchReleaseGroupReleases(groupId: string): Promise<MusicBrainzRelease[]> {
+async function findMatchingReleaseGroups(title: string, artist: string): Promise<MusicBrainzReleaseGroup[]> {
+  const quote = (value: string) => `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+
   const params = new URLSearchParams({
-    "release-group": groupId,
-    inc: "media artist-credits release-groups",
+    query: `releasegroup:${quote(title)} AND artist:${quote(artist)}`,
     fmt: "json",
-    limit: "100",
+    limit: "50",
   });
-  const url = `https://musicbrainz.org/ws/2/release/?${params.toString()}`;
+
+  const url = `https://musicbrainz.org/ws/2/release-group/?${params}`;
 
   const response = await fetchMusicBrainz(url);
 
   if (!response.ok){
-    throw new Error(`Release-group browse failed: ${response.status}`);
+    throw new Error(`Release-group search failed: ${response.status}`);
   }
 
-  const data = (await response.json()) as ReleaseBrowseResponse;
+  const data = (await response.json()) as ReleaseGroupSearchResponse;
 
-  console.log(
-    "[MB:GROUP:ARTWORK]",
-    data.releases?.map((release) => ({
-      id: release.id,
-      title: release.title,
-      formats: release.media?.map(
-        (medium) => medium.format
+  const matchingGroups = (data["release-groups"] ?? []).filter((group) => isMatchingAlbumIdentity(group, title, artist)).sort((a, b) => (Number(b.score) || 0) - (Number(a.score) || 0)).slice(0,3);
+
+  console.log("[MB:GROUP:SEARCH]", {
+    requestedTitle: title,
+    requestedArtist: artist,
+    returned: data["release-groups"]?.length ?? 0,
+    matchingGroups: matchingGroups.map((group) => ({
+      id: group.id,
+      title: group.title,
+      score: group.score,
+    })),
+  });
+
+  return matchingGroups;
+}
+
+async function findTypoMatchingReleaseGroups(title: string, artist: string): Promise<MusicBrainzReleaseGroup[]> {
+  const words = normalizeText(title).split(" ").filter(Boolean);
+
+  const eligibleIndices = words.map((word, index) => ({word, index})).filter(({word}) => word.length >= 6 && !/\d/.test(word)).slice(0, 3);
+
+  const quote = (value: string) => `"${value
+    .replace(/\\/g, "\\\\")
+    .replace(/"/g, '\\"')}"`;
+
+  const matchingGroups = new Map<string, MusicBrainzReleaseGroup>();
+
+  for (const { index } of eligibleIndices){
+    const titleQuery = words.map((word, i) => `releasegroup:${word}${i === index ? "~0.8" : ""}`).join(" AND ");
+
+    const query = `${titleQuery} AND artist:${quote(artist)}`;
+
+    const params = new URLSearchParams({
+      query,
+      fmt: "json",
+      limit: "25",
+    });
+
+    const url = `https://musicbrainz.org/ws/2/release-group/?${params}`;
+
+    const response = await fetchMusicBrainz(url);
+
+    if (!response.ok){
+      throw new Error(`Fuzzy release-group search failed: ${response.status}`);
+    }
+
+    const data = (await response.json()) as ReleaseGroupSearchResponse;
+
+    for (const group of data["release-groups"] ?? []){
+      if (isMatchingAlbumWithSingleTypo(group, title, artist)) matchingGroups.set(group.id, group);
+    }
+  }
+
+  const results = [...matchingGroups.values()].sort((a, b) => Number(b.score ?? 0) - Number(a.score ?? 0));
+
+  console.log("[MB:GROUP:TYPO]", {
+    requestedTitle: title,
+    requestedArtist: artist,
+    searchAttempts: eligibleIndices.length,
+    matchingGroups: results.map((group) => ({
+      id: group.id,
+      title: group.title,
+    })),
+  });
+
+  return results;
+}
+
+async function findMatchingArtworkReleases(title: string, artist: string): Promise<MusicBrainzRelease[]> {
+  const quote = (value: string) =>
+    `"${value
+      .replace(/\\/g, "\\\\")
+      .replace(/"/g, '\\"')}"`;
+
+  const params = new URLSearchParams({
+    query: `release:${quote(title)} AND artist:${quote(artist)}`,
+    fmt: "json",
+    limit: "50",
+  });
+
+  const url = `https://musicbrainz.org/ws/2/release/?${params}`;
+
+  const response = await fetchMusicBrainz(url);
+
+  if (!response.ok) {
+    throw new Error(`Fallback release search failed: ${response.status}`);
+  }
+
+  const data = (await response.json()) as ReleaseSearchResponse;
+
+  const matchingReleases = (data.releases ?? []).filter((release) => isMatchingAlbumIdentity(release, title, artist));
+
+  console.log("[MB:RELEASE:FALLBACK]", {
+    requestedTitle: title,
+    requestedArtist: artist,
+    searchResults: data.releases?.length ?? 0,
+    matchingReleases: matchingReleases.length,
+    groupIds: [
+      ...new Set(
+        matchingReleases
+          .map((release) => release["release-group"]?.id)
+          .filter(Boolean)
       ),
-      artwork: release["cover-art-archive"],
-    }))
-  );
+    ],
+  });
 
-  return data.releases ?? [];
+  return matchingReleases;
+}
+
+async function fetchReleaseGroupReleases(groupId: string): Promise<MusicBrainzRelease[]> {
+  const PAGE_LIMIT = 100;
+  const MAX_PAGES = 20;
+
+  const allReleases: MusicBrainzRelease[] = [];
+
+  let offset = 0;
+  let totalCount: number | null = null;
+
+  for (let page = 0; page < MAX_PAGES; page++) {
+    const params = new URLSearchParams({
+      "release-group": groupId,
+      inc: "media artist-credits release-groups",
+      fmt: "json",
+      limit: String(PAGE_LIMIT),
+      offset: String(offset),
+    });
+
+    const url = `https://musicbrainz.org/ws/2/release/?${params.toString()}`;
+
+    const response = await fetchMusicBrainz(url);
+
+    if (!response.ok) {
+      throw new Error(`Release-group browse failed: ${response.status}`);
+    }
+
+    const data = (await response.json()) as ReleaseBrowseResponse;
+
+    const pageReleases = data.releases ?? [];
+
+    if (totalCount === null && typeof data["release-count"] === "number" && Number.isSafeInteger(data["release-count"]) && data["release-count"] >= 0) {
+      totalCount = data["release-count"];
+    }
+
+    console.log("[MB:GROUP:PAGE]", {
+      groupId,
+      page: page + 1,
+      offset,
+      received: pageReleases.length,
+      totalCount,
+    });
+
+    if (pageReleases.length === 0) break;
+
+    allReleases.push(...pageReleases);
+
+    offset += pageReleases.length;
+
+    if (totalCount !== null && offset >= totalCount) break;
+
+    if (totalCount === null) break;
+
+    if (page === MAX_PAGES - 1) {
+      console.warn("[MB:GROUP:PAGE_LIMIT]", {
+        groupId,
+        fetched: allReleases.length,
+        totalCount,
+      });
+    }
+  }
+
+  console.log("[MB:GROUP:ARTWORK]", {
+    groupId,
+    fetched: allReleases.length,
+    totalCount,
+    vinylReleases: allReleases.filter((release) =>
+      release.media?.some((medium) =>
+        /\bvinyl\b/i.test(medium.format ?? "")
+      )
+    ).length,
+  });
+
+  return allReleases;
 }
 
 function getArtworkUrl(image?: CoverImage): string | null {
@@ -281,6 +461,59 @@ async function fetchCoverArt(releaseId: string, releaseGroupId?: string): Promis
   return {coverUrl: getArtworkUrl(frontImage), backCoverUrl: getArtworkUrl(backImage)};
 }
 
+function classifyFetchedArtwork(hasExistingFront: boolean, candidate: ArtworkCandidate, artwork: ArtworkResult): ArtworkCandidate | null {
+  const hasNewFront = Boolean(artwork.coverUrl?.trim());
+  const hasNewBack = Boolean(artwork.backCoverUrl?.trim());
+
+  if (hasExistingFront){
+    if (!hasNewBack) return null;
+
+    if (hasNewFront){
+      return {
+        kind: "pair",
+        release: candidate.release,
+      };
+    }
+
+    return {
+      kind: "back-only",
+      release: candidate.release,
+    };
+  }
+
+  if (!hasNewFront) return null;
+
+  if (hasNewBack) {
+    return {
+      kind: "pair",
+      release: candidate.release,
+    };
+  }
+
+  return {
+    kind: "front-only",
+    release: candidate.release,
+  };
+}
+
+function getArtworkPriority(hasExistingFront: boolean, candidate: ArtworkCandidate): number {
+  const isVinyl = candidate.release.media?.some((medium) =>  /\bvinyl\b/i.test(medium.format ?? "") ?? false);
+
+  if (hasExistingFront) {
+    if (candidate.kind === "pair") return isVinyl ? 0 : 2;
+
+    if (candidate.kind === "back-only") return isVinyl ? 1 : 3;
+
+    return 4;
+  }
+
+  if (candidate.kind === "pair") return isVinyl ? 0 : 1;
+
+  if (candidate.kind === "front-only") return isVinyl ? 2 : 3;
+
+  return 4;
+}
+
 export async function fetchAlbumArtwork(album: Pick<Album, "title" | "artist" | "url" | "backCoverUrl">): Promise<AlbumArtworkLookup> {
   const emptyResult: AlbumArtworkLookup = {
     candidate: null,
@@ -292,46 +525,198 @@ export async function fetchAlbumArtwork(album: Pick<Album, "title" | "artist" | 
 
   if (album.url?.trim() && album.backCoverUrl?.trim()) return emptyResult;
 
-  const params = new URLSearchParams({
-    query: `release:${album.title} AND artist:${album.artist}`,
-    fmt: "json",
-  });
+  const groups = await findMatchingReleaseGroups(album.title, album.artist);
 
-  const searchUrl = `https://musicbrainz.org/ws/2/release/?${params.toString()}`;
+  const releaseById = new Map<string, MusicBrainzRelease>();
 
-  const response = await fetchMusicBrainz(searchUrl);
+  const browsedGroupIds = new Set(groups.map((group) => group.id));
 
-  if (!response.ok) {
-    throw new Error(`MusicBrainz search failed: ${response.status}`);
-  }
+  for (const group of groups) {
+    const releases = await fetchReleaseGroupReleases(group.id);
 
-  const data = (await response.json()) as ReleaseSearchResponse;
-
-  const searchReleases = data.releases ?? [];
-
-  const searchRelease = selectBestRelease(searchReleases, album.title, album.artist);
-
-  if (!searchRelease) return emptyResult;
-
-  const groupId = searchRelease["release-group"]?.id;
-
-  let candidates = searchReleases;
-
-  if (groupId) {
-    const groupReleases = await fetchReleaseGroupReleases(groupId);
-
-    if (groupReleases.length > 0){
-      candidates = groupReleases;
+    for (const release of releases){
+      releaseById.set(release.id, release);
     }
   }
 
-  const candidate = selectArtworkCandidate(album, candidates);
+  let rankedCandidates = rankArtworkCandidates(album, [...releaseById.values()]);
 
-  if (!candidate) return emptyResult;
+  if (rankedCandidates.length === 0){
+    console.log("[ARTWORK:FALLBACK:START]", {
+      album: `${album.artist} - ${album.title}`,
+      groupsChecked: groups.length,
+    });
 
-  const artwork = await fetchCoverArt(candidate.release.id);
+    const matchingReleases = await findMatchingArtworkReleases(album.title, album.artist);
 
-  return {candidate, artwork};
+    for (const release of matchingReleases) {
+      if (!releaseById.has(release.id)) {
+        releaseById.set(release.id, release);
+      }
+    }
+
+    const fallbackGroupIds = [...new Set(matchingReleases.map((release) => release["release-group"]?.id).filter((id): id is string => Boolean(id)),)].filter((id) => !browsedGroupIds.has(id)).slice(0, 3);
+
+    for (const groupId of fallbackGroupIds) {
+      browsedGroupIds.add(groupId);
+
+      const releases = await fetchReleaseGroupReleases(groupId);
+
+      for (const release of releases) {
+        releaseById.set(release.id, release);
+      }
+    }
+
+    rankedCandidates = rankArtworkCandidates(album, [...releaseById.values()]);
+
+    console.log("[ARTWORK:FALLBACK:RESULT]", {
+      album: `${album.artist} - ${album.title}`,
+      matchingReleases: matchingReleases.length,
+      additionalGroups: fallbackGroupIds.length,
+      candidates: rankedCandidates.length,
+    });
+  }
+
+  if (rankedCandidates.length === 0) {
+    console.log("[ARTWORK:TYPO:START]", {
+      album: `${album.artist} - ${album.title}`,
+    });
+
+    const typoGroups = await findTypoMatchingReleaseGroups(album.title, album.artist);
+
+    const canonicalTitle = typoGroups[0]?.title;
+
+    if (canonicalTitle) {
+      const ambiguous = typoGroups.some((group) => !isMatchingAlbumIdentity(group, canonicalTitle, album.artist));
+
+      if (ambiguous) {
+        console.warn("[ARTWORK:TYPO:AMBIGUOUS]", {
+          album: `${album.artist} - ${album.title}`,
+          possibleTitles: typoGroups.map(
+            (group) => group.title
+          ),
+        });
+      } else {
+        const typoReleases: MusicBrainzRelease[] = [];
+
+        for (const group of typoGroups.slice(0, 3)) {
+          const releases = await fetchReleaseGroupReleases(group.id);
+
+          typoReleases.push(...releases);
+        }
+
+        const matchingAlbum = {
+          ...album,
+          title: canonicalTitle,
+        };
+
+        rankedCandidates = rankArtworkCandidates(matchingAlbum, typoReleases);
+
+        console.log("[ARTWORK:TYPO:RESULT]", {
+          originalTitle: album.title,
+          matchedTitle: canonicalTitle,
+          groupsChecked: Math.min(typoGroups.length, 3),
+          releasesChecked: typoReleases.length,
+          candidates: rankedCandidates.length,
+        });
+      }
+    }
+  }
+
+  if (rankedCandidates.length === 0){
+    console.log("[ARTWORK:NO_CANDIDATE]", {
+      album: `${album.artist} - ${album.title}`,
+      groupsChecked: browsedGroupIds.size,
+      releasesChecked: releaseById.size,
+    });
+
+    return emptyResult;
+  }
+
+  const hasExistingFront = Boolean(album.url?.trim());
+
+  let bestResult: {
+    priority: number;
+    lookup: AlbumArtworkLookup;
+  } | null = null;
+
+  let firstError: unknown = null;
+
+  const MAX_ATTEMPTS_PER_PRIORITY = 5;
+  const attemptsByPriority = new Map<number, number>();
+
+  for (const candidate of rankedCandidates){
+    const advertisedPriority = getArtworkPriority(hasExistingFront, candidate);
+
+    if (bestResult !== null && advertisedPriority >= bestResult.priority) break;
+
+    const attempts = attemptsByPriority.get(advertisedPriority) ?? 0;
+
+    if (attempts >= MAX_ATTEMPTS_PER_PRIORITY) continue;
+
+    attemptsByPriority.set(advertisedPriority, attempts + 1);
+
+    let artwork: ArtworkResult;
+
+    try {
+      artwork = await fetchCoverArt(candidate.release.id);
+    } catch (error) {
+      if (firstError === null) firstError = error;
+
+      console.warn("[ARTWORK:CANDIDATE:FAILED]", {
+        releaseId: candidate.release.id,
+        error,
+      });
+
+      continue;
+    }
+
+    const actualCandidate = classifyFetchedArtwork(hasExistingFront, candidate, artwork);
+
+    console.log("[ARTWORK:CANDIDATE:CHECKED]", {
+      releaseId: candidate.release.id,
+      advertisedKind: candidate.kind,
+      actualKind: actualCandidate?.kind ?? null,
+      fetchedFront: Boolean(artwork.coverUrl),
+      fetchedBack: Boolean(artwork.backCoverUrl),
+    });
+
+    if (!actualCandidate) continue;
+
+    const priority = getArtworkPriority(hasExistingFront, actualCandidate);
+
+    if (bestResult === null || priority < bestResult.priority) {
+      bestResult = {
+        priority,
+        lookup: {
+          candidate: actualCandidate,
+          artwork,
+        },
+      };
+    }
+
+    if (priority === 0) break;
+  }
+
+  if (bestResult !== null) {
+    console.log("[ARTWORK:SELECTED]", {
+      album: `${album.artist} - ${album.title}`,
+      releaseId: bestResult.lookup.candidate?.release.id,
+      kind: bestResult.lookup.candidate?.kind,
+      priority: bestResult.priority,
+    });
+
+    return bestResult.lookup;
+  }
+
+  if (firstError !== null) throw firstError;
+
+  console.log("[ARTWORK:NO_USABLE_ARTWORK]", {
+    album: `${album.artist} - ${album.title}`,
+    candidates: rankedCandidates.length,
+  });
+
+  return emptyResult;
 }
 
 export async function fetchAlbumMetadata( title: string, artist: string): Promise<AlbumMetadata> {

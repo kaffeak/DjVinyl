@@ -15,7 +15,7 @@ import { useAlbumLibrary} from "@/src/hooks/useAlbumLibrary";
 import { useAlbumDeck} from "@/src/hooks/useAlbumDeck";
 
 const LAST_LIBRARY_KEY = "lastLibrary";
-const RUN_ARTWORK_MIGRATION = true;
+const RUN_ARTWORK_MIGRATION = false;
 
 export default function Index() {
   const [owner, setOwner] = useState("");

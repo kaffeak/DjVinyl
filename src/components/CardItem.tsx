@@ -1,7 +1,8 @@
-import {Image, Pressable, ScrollView, StyleSheet, Text, View} from "react-native";
+import {Pressable, ScrollView, StyleSheet, Text, View} from "react-native";
 import React, {useEffect, useMemo, useState} from "react";
 import LottieView from "lottie-react-native";
 import {Gesture, GestureDetector} from "react-native-gesture-handler";
+import {Image as ExpoImage } from "expo-image";
 import Animated, {
   runOnJS,
   useAnimatedStyle,
@@ -10,13 +11,10 @@ import Animated, {
   withSpring,
   withTiming
 } from "react-native-reanimated";
-import {scheduleOnRN} from "react-native-worklets";
-import invert from "invert-color";
 import * as Haptics from "expo-haptics";
 import { Dimensions } from "react-native";
 import type {Album} from "@/src/types/album";
 import {parseTrack} from "@/src/utils/tracks";
-import {getDisplayedCoverUrl} from "@/src/utils/albumArtwork";
 
 const { width: screenWidth } = Dimensions.get("window");
 
@@ -28,7 +26,8 @@ type Props = {
   activeCardId: React.MutableRefObject<string | null>
 };
 const CardItem = ({index, album, shuffleCards, isTop, activeCardId}: Props) => {
-  const [isCoverLoading, setIsCoverLoading] = useState(true);
+  const [loadedFrontUrl, setLoadedFrontUrl] = useState<string | null>(null);
+  const [loadedBackUrl, setLoadedBackUrl] = useState<string | null>(null);
   const [showTracks, setShowTracks] = useState<boolean>(false);
 
   const transformX = useSharedValue(0);
@@ -48,7 +47,13 @@ const CardItem = ({index, album, shuffleCards, isTop, activeCardId}: Props) => {
   const visibleTracks = album.trackList?.slice(0, MAX_TRACKS) ?? [];
   const hasMore = album.trackList?.length > MAX_TRACKS;
 
-  const displayedCoverUrl = getDisplayedCoverUrl(album, showTracks);
+  const frontCoverUrl = album.url?.trim() || "https://placehold.co/250x250?text=No+Cover";
+
+  const backCoverUrl = album.url?.trim() && album.backCoverUrl?.trim() ? album.backCoverUrl?.trim() : "";
+
+  const isCoverLoading = loadedFrontUrl !== frontCoverUrl;
+
+  const isBackReady = Boolean(backCoverUrl) && loadedBackUrl === backCoverUrl;
 
   const hintStyle = useAnimatedStyle(() => ({
     opacity: 1 - overlayOpacity.value,
@@ -151,22 +156,40 @@ const CardItem = ({index, album, shuffleCards, isTop, activeCardId}: Props) => {
           }}
           style={{ flex: 1 }}
         >
-          <Image
-            source={{
-              uri: displayedCoverUrl || "https://placehold.co/250x250?text=No+Cover",
-              width: 250,
-              height: 250,
-            }}
-            style={{
-              width: "100%",
-              height: "100%",
-              borderRadius: 16,
-              opacity: isCoverLoading ? 0 : 1,
-            }}
-            onLoadStart={() => setIsCoverLoading(true)}
-            onLoadEnd={() => setIsCoverLoading(false)}
-          />
-
+          <View style={{ flex: 1 , borderRadius: 16, overflow: "hidden"}}>
+            <ExpoImage
+              key={`front-${frontCoverUrl}`}
+              source={{ uri: frontCoverUrl }}
+              cachePolicy="memory-disk"
+              contentFit="cover"
+              style={[
+                StyleSheet.absoluteFillObject,
+                {
+                  opacity: isCoverLoading ? 0 : 1,
+                },
+              ]}
+              onLoadEnd={() => {
+                setLoadedFrontUrl(frontCoverUrl);
+              }}
+            />
+            {backCoverUrl && index <= 2 && (
+              <ExpoImage
+                key={`back-${backCoverUrl}`}
+                source={{ uri: backCoverUrl }}
+                cachePolicy="memory-disk"
+                contentFit="cover"
+                style={[
+                  StyleSheet.absoluteFillObject,
+                  {
+                    opacity: showTracks && isBackReady ? 1 : 0,
+                  },
+                ]}
+                onLoad={() => {
+                  setLoadedBackUrl(backCoverUrl);
+                }}
+              />
+            )}
+          </View>
           <Animated.View
             pointerEvents={showTracks ? "auto" : "none"}
             style={[

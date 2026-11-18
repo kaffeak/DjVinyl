@@ -7,7 +7,6 @@ import {
   Modal,
   View,
   Text,
-  Image,
   TouchableWithoutFeedback,
   Dimensions,
   StyleSheet, Pressable,
@@ -18,6 +17,7 @@ import * as Haptics from "expo-haptics";
 import type {Album} from "@/src/types/album";
 import {parseTrack} from "@/src/utils/tracks";
 import {getDisplayedCoverUrl} from "@/src/utils/albumArtwork";
+import {Image as ExpoImage} from "expo-image";
 
 type AndroidColors = {
   average?: string;
@@ -59,7 +59,7 @@ export default function AlbumInfoModal({
   const [textColor, setTextColor] = useState<string>(invert("#1e293b"))
   const anim = useRef(new Animated.Value(0)).current;
   const [currentPage, setCurrentPage] = useState(0);
-  const [imageFailed, setImageFailed] = useState(false);
+  const [loadedBackUrl, setLoadedBackUrl] = useState<string | null>(null);
 
   const pagerRef = useRef<PagerView>(null);
 
@@ -68,11 +68,11 @@ export default function AlbumInfoModal({
   const [editGenres, setEditGenres] = useState<boolean>(false);
   const [newGenre, setNewGenre] = useState<string>("");
 
-  const displayedCoverUrl = album ? getDisplayedCoverUrl(album, currentPage === 1) : "";
+  const frontCoverUrl = album?.url?.trim() ?? "";
 
-  useEffect(() => {
-    setImageFailed(false)
-  }, [displayedCoverUrl]);
+  const backCoverUrl = frontCoverUrl ? album?.backCoverUrl?.trim() ?? "" : "";
+
+  const showLoadedBack = currentPage === 1 && Boolean(backCoverUrl) && loadedBackUrl === backCoverUrl;
 
   useEffect(() => {
     if(!visible) {
@@ -201,25 +201,48 @@ export default function AlbumInfoModal({
               },
             ]}
           >
-            {displayedCoverUrl && !imageFailed ? (
-              <Image
-                source={{ uri: displayedCoverUrl }}
-                style={[styles.image, {width: cardSize, height: cardSize}]}
-                resizeMode={"cover"}
+            <View style={{
+              width: cardSize,
+              height: cardSize,
+              backgroundColor: "#1e293b",
+              overflow: "hidden",
+            }}>
+              {frontCoverUrl ? (
+                <ExpoImage
+                  source={{ uri: frontCoverUrl }}
+                  cachePolicy="memory-disk"
+                  contentFit="cover"
+                  style={StyleSheet.absoluteFillObject}
                 />
-            ) : (
-              <View
-                style={{
-                  width: cardSize,
-                  height: cardSize,
-                  backgroundColor: "#1e293b",
-                  justifyContent: "center",
+              ) : (
+                <View style={{
+                  flex: 1,
                   alignItems: "center",
-                }}
-              >
-                <Text style={{color: "#94a3b8", fontSize: 16 }}> No cover available</Text>
-              </View>
-            )}
+                  justifyContent: "center",
+                }}>
+                  <Text style={{ color: "#94a3b8", fontSize: 16}}>
+                    No Cover available
+                  </Text>
+                </View>
+              )}
+              { backCoverUrl ? (
+                <ExpoImage
+                  key={backCoverUrl}
+                  source={{ uri: backCoverUrl }}
+                  cachePolicy="memory-disk"
+                  contentFit="cover"
+                  style={[
+                    StyleSheet.absoluteFillObject,
+                    {
+                      opacity: showLoadedBack ? 1 : 0,
+                    },
+                  ]}
+                  onLoad={() => {
+                    setLoadedBackUrl(backCoverUrl);
+                  }}
+                />
+              ) : null }
+            </View>
             {editGenres && (
               <Pressable
                 style={styles.minusBadgeAlbum}

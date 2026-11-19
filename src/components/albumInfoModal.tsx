@@ -18,6 +18,7 @@ import type {Album} from "@/src/types/album";
 import {parseTrack} from "@/src/utils/tracks";
 import {getDisplayedCoverUrl} from "@/src/utils/albumArtwork";
 import {Image as ExpoImage} from "expo-image";
+import AlbumCoverFlip from "@/src/components/AlbumCoverFlip";
 
 type AndroidColors = {
   average?: string;
@@ -73,6 +74,17 @@ export default function AlbumInfoModal({
   const backCoverUrl = frontCoverUrl ? album?.backCoverUrl?.trim() ?? "" : "";
 
   const showLoadedBack = currentPage === 1 && Boolean(backCoverUrl) && loadedBackUrl === backCoverUrl;
+
+  const isBackReady = Boolean(backCoverUrl) && loadedBackUrl === backCoverUrl;
+
+  useEffect(() => {
+    if (!visible) {
+      setEditGenres(false);
+      setNewGenre("");
+      setShowQueueOptions(false);
+      setCurrentPage(0);
+    }
+  }, [visible]);
 
   useEffect(() => {
     if(!visible) {
@@ -201,47 +213,73 @@ export default function AlbumInfoModal({
               },
             ]}
           >
-            <View style={{
+            <View
+            style={{
               width: cardSize,
               height: cardSize,
-              backgroundColor: "#1e293b",
+              flexShrink: 0,
               overflow: "hidden",
-            }}>
-              {frontCoverUrl ? (
-                <ExpoImage
-                  source={{ uri: frontCoverUrl }}
-                  cachePolicy="memory-disk"
-                  contentFit="cover"
-                  style={StyleSheet.absoluteFillObject}
-                />
-              ) : (
-                <View style={{
-                  flex: 1,
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}>
-                  <Text style={{ color: "#94a3b8", fontSize: 16}}>
-                    No Cover available
-                  </Text>
-                </View>
-              )}
-              { backCoverUrl ? (
-                <ExpoImage
-                  key={backCoverUrl}
-                  source={{ uri: backCoverUrl }}
-                  cachePolicy="memory-disk"
-                  contentFit="cover"
-                  style={[
-                    StyleSheet.absoluteFillObject,
-                    {
-                      opacity: showLoadedBack ? 1 : 0,
-                    },
-                  ]}
-                  onLoad={() => {
-                    setLoadedBackUrl(backCoverUrl);
-                  }}
-                />
-              ) : null }
+              backgroundColor: top,
+            }}
+            >
+              <AlbumCoverFlip
+                key={album.$id}
+                flipped={currentPage === 1}
+                front={
+                  frontCoverUrl ? (
+                    <ExpoImage
+                      source={{uri: frontCoverUrl}}
+                      cachePolicy="memory-disk"
+                      contentFit="cover"
+                      style={StyleSheet.absoluteFillObject}
+                    />
+                  ) : (
+                    <View
+                      style={{
+                        flex: 1,
+                        justifyContent: "center",
+                        alignItems: "center",
+                        backgroundColor: "#1e293b",
+                      }}
+                    >
+                      <Text style={{ color: "#94a3b8"}}>No cover available</Text>
+                    </View>
+                  )
+                }
+                back={
+                  <>
+                  {frontCoverUrl ? (
+                    <ExpoImage
+                      source={{uri: frontCoverUrl}}
+                      cachePolicy="memory-disk"
+                      contentFit="cover"
+                      style={StyleSheet.absoluteFillObject}
+                    />
+                  ) : (
+                    <View
+                      style={{
+                        ...StyleSheet.absoluteFillObject,
+                        backgroundColor: "#1e293b",
+                      }}
+                    />
+                  )}
+                  {backCoverUrl ? (
+                    <ExpoImage
+                      source={{uri: backCoverUrl}}
+                      cachePolicy="memory-disk"
+                      contentFit="cover"
+                      style={[
+                        StyleSheet.absoluteFillObject,
+                        { opacity: isBackReady ? 1 : 0, },
+                      ]}
+                      onLoad={() => {
+                      setLoadedBackUrl(backCoverUrl);
+                      }}
+                      />
+                    ) : null }
+                  </>
+                }
+              />
             </View>
             {editGenres && (
               <Pressable

@@ -15,6 +15,7 @@ import * as Haptics from "expo-haptics";
 import { Dimensions } from "react-native";
 import type {Album} from "@/src/types/album";
 import {parseTrack} from "@/src/utils/tracks";
+import AlbumCoverFlip from "@/src/components/AlbumCoverFlip";
 
 const { width: screenWidth } = Dimensions.get("window");
 
@@ -43,7 +44,6 @@ const CardItem = ({index, album, shuffleCards, isTop, activeCardId}: Props) => {
 
   const MAX_TRACKS = height < 700 ? 5 : height < 800 ? 6 : 7;
 
-
   const visibleTracks = album.trackList?.slice(0, MAX_TRACKS) ?? [];
   const hasMore = album.trackList?.length > MAX_TRACKS;
 
@@ -54,22 +54,6 @@ const CardItem = ({index, album, shuffleCards, isTop, activeCardId}: Props) => {
   const isCoverLoading = loadedFrontUrl !== frontCoverUrl;
 
   const isBackReady = Boolean(backCoverUrl) && loadedBackUrl === backCoverUrl;
-
-  const hintStyle = useAnimatedStyle(() => ({
-    opacity: 1 - overlayOpacity.value,
-  }));
-
-  useEffect(() => {
-    overlayOpacity.value = withTiming(showTracks ? 1 : 0, {
-      duration: 200,
-    });
-  }, [showTracks]);
-
-  const overlayStyle = useAnimatedStyle(() => {
-    return {
-      opacity: overlayOpacity.value,
-    };
-  });
 
   const gesture = Gesture.Pan().onUpdate((e) => {
       if(index < 2) {
@@ -156,144 +140,139 @@ const CardItem = ({index, album, shuffleCards, isTop, activeCardId}: Props) => {
           }}
           style={{ flex: 1 }}
         >
-          <View style={{ flex: 1 , borderRadius: 16, overflow: "hidden"}}>
-            <ExpoImage
-              key={`front-${frontCoverUrl}`}
-              source={{ uri: frontCoverUrl }}
-              cachePolicy="memory-disk"
-              contentFit="cover"
-              style={[
-                StyleSheet.absoluteFillObject,
-                {
-                  opacity: isCoverLoading ? 0 : 1,
-                },
-              ]}
-              onLoadEnd={() => {
-                setLoadedFrontUrl(frontCoverUrl);
-              }}
-            />
-            {backCoverUrl && index <= 2 && (
-              <ExpoImage
-                key={`back-${backCoverUrl}`}
-                source={{ uri: backCoverUrl }}
-                cachePolicy="memory-disk"
-                contentFit="cover"
-                style={[
-                  StyleSheet.absoluteFillObject,
-                  {
-                    opacity: showTracks && isBackReady ? 1 : 0,
-                  },
-                ]}
-                onLoad={() => {
-                  setLoadedBackUrl(backCoverUrl);
-                }}
-              />
-            )}
-          </View>
-          <Animated.View
-            pointerEvents={showTracks ? "auto" : "none"}
-            style={[
-              {
-                ...StyleSheet.absoluteFillObject,
-                borderRadius: 16,
-                overflow: "hidden",
-                backgroundColor: "rgba(0,0,0,0.75)",
-                padding: 12,
-                justifyContent: "flex-start"
-              },
-              overlayStyle,
-            ]}
-          >
-            <Text
-              style={{
-                color: "#fff",
-                fontWeight: "700",
-                fontSize: 14,
-                marginBottom: 8,
-                textAlign: "center",
-              }}
-            >
-              Tracklist
-            </Text>
-
-            {visibleTracks.map((track: string, i: number) => {
-              const { title, duration } = parseTrack(track);
-
-              return (
-                <View
-                  key={i}
-                  style={{
-                    flexDirection: "row",
-                    alignItems: "center",
-                    marginBottom: 6,
+          <AlbumCoverFlip
+            flipped={showTracks}
+            front={
+              <>
+                <ExpoImage
+                  source={{uri: frontCoverUrl}}
+                  cachePolicy="memory-disk"
+                  contentFit="cover"
+                  style={[
+                    StyleSheet.absoluteFillObject,
+                    { opacity: isCoverLoading ? 0 : 1},
+                  ]}
+                  onLoadEnd={() => {
+                    setLoadedFrontUrl(frontCoverUrl);
                   }}
+                />
+
+                {!isCoverLoading && album.trackList?.length > 0 && (
+                  <View
+                    style={{
+                      position: "absolute",
+                      bottom: 10,
+                      right: 10,
+                      backgroundColor: "rgba(0,0,0,0.5)",
+                      paddingHorizontal: 10,
+                      paddingVertical: 4,
+                      borderRadius: 10,
+                    }}
+                  >
+                    <Text style={{ color: "#fff", fontSize: 10}}>Tap for tracks</Text>
+                  </View>
+                )}
+              </>
+            }
+            back={
+              <>
+                <ExpoImage
+                  source={{ uri: frontCoverUrl}}
+                  cachePolicy="memory-disk"
+                  contentFit="cover"
+                  style={StyleSheet.absoluteFillObject}
+                />
+                { backCoverUrl ? (
+                  <ExpoImage
+                    source={{uri: backCoverUrl}}
+                    cachePolicy="memory-disk"
+                    contentFit="cover"
+                    style={[
+                      StyleSheet.absoluteFillObject,
+                      { opacity: isBackReady ? 1 : 0 },
+                    ]}
+                    onLoad={() => {
+                      setLoadedBackUrl(backCoverUrl);
+                    }}
+                  />
+                ) : null}
+
+                <View
+                  pointerEvents="none"
+                  style={{
+                      ...StyleSheet.absoluteFillObject,
+                      backgroundColor: "rgba(0,0,0,0.75)",
+                      padding: 12,
+                      justifyContent: "flex-start",
+                    }}
                 >
-                  <Text style={{ color: "#9CA3AF", width: 20, fontSize: 11 }}>
-                    {i + 1}.
-                  </Text>
-
-                  <Text
-                    numberOfLines={1}
-                    style={{
-                      flex: 1,
-                      color: "#E5E7EB",
-                      fontSize: 12,
-                    }}
-                  >
-                    {title}
-                  </Text>
-
                   <Text
                     style={{
-                      color: "#9CA3AF",
-                      fontSize: 11,
-                      marginLeft: 8,
-                      minWidth: 35,
-                      textAlign: "right",
+                      color: "#fff",
+                      fontWeight: "700",
+                      fontSize: 14,
+                      marginBottom: 8,
+                      textAlign: "center",
                     }}
                   >
-                    {duration}
+                    Tracklist
                   </Text>
+
+                  {visibleTracks.map((track: string, i: number) => {
+                    const { title, duration } = parseTrack(track);
+
+                    return (
+                      <View
+                        key={i}
+                        style={{
+                          flexDirection: "row",
+                          alignItems: "center",
+                          marginBottom: 6,
+                        }}
+                      >
+                        <Text style={{ color: "#9CA3AF", width: 20, fontSize: 11 }}>
+                          {i + 1}.
+                        </Text>
+
+                        <Text
+                          numberOfLines={1}
+                          style={{
+                            flex: 1,
+                            color: "#E5E7EB",
+                            fontSize: 12,
+                          }}
+                        >
+                          {title}
+                        </Text>
+
+                        <Text
+                          style={{
+                            color: "#9CA3AF",
+                            fontSize: 11,
+                            marginLeft: 8,
+                            minWidth: 35,
+                            textAlign: "right",
+                          }}
+                        >
+                          {duration}
+                        </Text>
+                      </View>
+                    );
+                  })}
+
+                  {hasMore && (
+                    <Text
+                      style={{
+                        color: "#9CA3AF",
+                        textAlign: "center",
+                        marginTop: 6,
+                        fontSize: 12,
+                      }}
+                    >And {album.trackList.length - MAX_TRACKS} more...</Text>
+                  )}
                 </View>
-              );
-            })}
-
-            {hasMore && (
-              <Text
-                style={{
-                  color: "#9CA3AF",
-                  textAlign: "center",
-                  marginTop: 6,
-                  fontSize: 12,
-                }}
-              >And {album.trackList.length - MAX_TRACKS} more...</Text>
-            )}
-          </Animated.View>
-
-          <Animated.View
-            pointerEvents="none"
-            style={[
-              {
-                position: "absolute",
-                bottom: 10,
-                alignSelf: "flex-end",
-                marginRight: 10,
-                backgroundColor: "rgba(0,0,0,0.5)",
-                paddingHorizontal: 10,
-                paddingVertical: 4,
-                borderRadius: 10,
-              },
-              hintStyle,
-              {
-                opacity: !isCoverLoading && album.trackList?.length > 0 ? hintStyle.opacity : 0,
-              }
-            ]}
-          >
-            <Text style={{ color: "#fff", fontSize: 10 }}>
-              Tap for tracks
-            </Text>
-          </Animated.View>
-
+              </>
+            }></AlbumCoverFlip>
         </Pressable>
       </Animated.View>
     </GestureDetector>

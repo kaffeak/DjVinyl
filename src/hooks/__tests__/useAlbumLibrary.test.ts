@@ -1007,4 +1007,57 @@ describe("useAlbumLibrary", () => {
       backCoverUrl: "https://example.com/backcover2.jpg",
     }));
   });
+  test("should manually refresh a complete album", async () => {
+    jest.mocked(listAlbums).mockResolvedValue(
+      asDocument([albumOne])
+    );
+
+    jest.mocked(fetchAlbumArtwork).mockResolvedValue({
+      candidate: {
+        kind: "pair",
+        release: { id: "replacement-release" },
+      },
+      artwork: {
+        coverUrl: "https://example.com/new-front.jpg",
+        backCoverUrl: "https://example.com/new-back.jpg",
+      },
+    });
+
+    const { result } = await renderHook(() =>
+      useAlbumLibrary("library-A")
+    );
+
+    await waitFor(() => {
+      expect(result.current.loadedLibraryId).toBe("library-A");
+    });
+
+    let status = "";
+
+    await act(async () => {
+      status = await result.current.refreshAlbumArtwork(
+        "album-1",
+        true
+      );
+    });
+
+    expect(status).toBe("updated");
+
+    expect(fetchAlbumArtwork).toHaveBeenCalledWith(
+      albumOne,
+      true
+    );
+
+    expect(updateAlbum).toHaveBeenCalledWith(
+      "library-A",
+      "album-1",
+      {
+        url: "https://example.com/new-front.jpg",
+        backCoverUrl: "https://example.com/new-back.jpg",
+      }
+    );
+
+    expect(result.current.albums[0].trackList).toEqual(
+      ["Track One - 3:15"]
+    );
+  });
 });

@@ -14,6 +14,7 @@ import AlbumInfoModal from "@/src/components/albumInfoModal";
 import AlbumGridItem from "@/src/components/albumGridItem";
 import {Ionicons} from "@expo/vector-icons";
 import type {Album} from "@/src/types/album";
+import type {ArtworkRefreshResult} from "@/src/hooks/useAlbumLibrary";
 
 type libraryProps = {
   albums: Album[],
@@ -24,6 +25,7 @@ type libraryProps = {
   onUpdateAlbumGenres: (albumTitle: string, albumArtist: string, genres: string[]) => void;
   onRemoveAlbumL: (album: Album) => void;
   queueAlbum: (album: Album) => void;
+  onRefreshArtwork: (albumId: string, force?: boolean) => Promise<ArtworkRefreshResult>;
 }
 
 export default function ShowLibrary({
@@ -35,6 +37,7 @@ export default function ShowLibrary({
   onUpdateAlbumGenres,
   onRemoveAlbumL,
   queueAlbum,
+  onRefreshArtwork,
   }: libraryProps) {
   const [selected, setSelected] = useState<Album | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
@@ -63,10 +66,8 @@ export default function ShowLibrary({
   }, [searchTerm, sortedAlbums]);
 
   useEffect(() => {
-    if (!selected) return;
-    const updated = albums.find(
-      a => a.title === selected.title && a.artist === selected.artist
-    );
+    if (!selected?.$id) return;
+    const updated = albums.find((album) => album.$id === selected.$id);
 
     if (updated) {
       setSelected(updated);
@@ -163,6 +164,7 @@ export default function ShowLibrary({
               confirmRemoveAlbum(album);
             }}
             queueAlbum={queueAlbum}
+            onRefreshArtwork={onRefreshArtwork}
           />
           <View className="absolute bottom-0 mb-16 left-0 right-0 items-center p-4 ">
             <Pressable

@@ -346,4 +346,42 @@ describe("artworkSelection", () => {
     expect(releases[0]).toBe(first);
     expect(releases[1]).toBe(second);
   });
+  test("should allow manual refresh of complete albums using pairs only", () => {
+    const completeAlbum = {
+      ...album,
+      url: "https://example.com/old-front.jpg",
+      backCoverUrl: "https://example.com/old-back.jpg",
+    };
+
+    const vinylBackOnly = createRelease(
+      "vinyl-back-only",
+      false,
+      true
+    );
+
+    const cdPair = createRelease(
+      "cd-pair",
+      true,
+      true,
+      "CD"
+    );
+
+    const vinylPair = createRelease(
+      "vinyl-pair",
+      true,
+      true
+    );
+
+    const result = rankArtworkCandidates(
+      completeAlbum,
+      [vinylBackOnly, cdPair, vinylPair],
+      true
+    );
+
+    expect(result.map((candidate) => candidate.release.id))
+      .toEqual(["vinyl-pair", "cd-pair"]);
+
+    expect(result.every((candidate) => candidate.kind === "pair"))
+      .toBe(true);
+  });
 });

@@ -14,6 +14,25 @@ type MetadataRetryInfo = {
 
 export type ArtworkRefreshResult = | "updated" | "unchanged" | "skipped" | "busy" | "failed";
 
+export type ArtworkPreview = {
+  libraryId: string;
+  albumId: string;
+  releaseId: string;
+  releaseTitle: string;
+  releaseFormat: string;
+  current: {
+    frontUrl: string;
+    backUrl: string;
+  };
+  proposed: {
+    frontUrl: string;
+    backUrl: string;
+  };
+  changes: ReturnType<typeof buildArtworkChanges>;
+};
+
+export type ArtworkPreviewSearchResult = | {status: "ready"; preview: ArtworkPreview;} | {status: "unchanged" | "skipped" | "busy" | "failed"};
+
 export type BulkArtworkProgress = {
   total: number;
   processed: number;
@@ -149,7 +168,7 @@ export function useAlbumLibrary(owner: string){
   );
 
   const refreshAlbumArtwork = useCallback(
-    async (albumId: string): Promise<ArtworkRefreshResult> => {
+    async (albumId: string, force = false): Promise<ArtworkRefreshResult> => {
       //if (!owner || loadedLibraryId !== owner) return "skipped";
       if (!owner || loadedLibraryId !== owner || activeLibraryRef.current !== owner) return "skipped";
 
@@ -161,7 +180,7 @@ export function useAlbumLibrary(owner: string){
       const hasFront = Boolean(album.url?.trim());
       const hasBack = Boolean(album.backCoverUrl?.trim());
 
-      if (hasFront && hasBack) return "skipped";
+      if (hasFront && hasBack && !force) return "skipped";
 
       const libraryId = owner;
       const key = `${libraryId}:${album.$id}`;
@@ -171,9 +190,9 @@ export function useAlbumLibrary(owner: string){
       metadataInFlight.current.add(key);
 
       try {
-        const {candidate, artwork} = await fetchAlbumArtwork(album);
+        const {candidate, artwork} = force ? await fetchAlbumArtwork(album, true) : await fetchAlbumArtwork(album);
 
-        const changes = buildArtworkChanges(album, candidate, artwork);
+        const changes = buildArtworkChanges(album, candidate, artwork, force);
 
         console.log("[ARTWORK:STATE UPDATE]", {
           activeLibrary: activeLibraryRef.current,

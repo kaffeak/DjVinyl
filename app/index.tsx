@@ -31,6 +31,7 @@ export default function Index() {
     addAlbum,
     removeAlbum,
     updateGenres,
+    refreshAlbumArtwork,
     runArtworkMigration,
   } = useAlbumLibrary(owner);
 
@@ -223,6 +224,7 @@ export default function Index() {
             onRemoveAlbumL={removeAlbum}
             onClose={() => {setLibrary(false)}}
             queueAlbum={queueAlbum}
+            onRefreshArtwork={refreshAlbumArtwork}
           />
         </View>
       </LinearGradient>

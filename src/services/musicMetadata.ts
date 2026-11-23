@@ -514,7 +514,7 @@ function getArtworkPriority(hasExistingFront: boolean, candidate: ArtworkCandida
   return 4;
 }
 
-export async function fetchAlbumArtwork(album: Pick<Album, "title" | "artist" | "url" | "backCoverUrl">): Promise<AlbumArtworkLookup> {
+export async function fetchAlbumArtwork(album: Pick<Album, "title" | "artist" | "url" | "backCoverUrl">, force = false): Promise<AlbumArtworkLookup> {
   const emptyResult: AlbumArtworkLookup = {
     candidate: null,
     artwork: {
@@ -523,7 +523,7 @@ export async function fetchAlbumArtwork(album: Pick<Album, "title" | "artist" | 
     },
   };
 
-  if (album.url?.trim() && album.backCoverUrl?.trim()) return emptyResult;
+  if (album.url?.trim() && album.backCoverUrl?.trim() && !force) return emptyResult;
 
   const groups = await findMatchingReleaseGroups(album.title, album.artist);
 
@@ -539,7 +539,7 @@ export async function fetchAlbumArtwork(album: Pick<Album, "title" | "artist" | 
     }
   }
 
-  let rankedCandidates = rankArtworkCandidates(album, [...releaseById.values()]);
+  let rankedCandidates = rankArtworkCandidates(album, [...releaseById.values()], force);
 
   if (rankedCandidates.length === 0){
     console.log("[ARTWORK:FALLBACK:START]", {
@@ -567,7 +567,7 @@ export async function fetchAlbumArtwork(album: Pick<Album, "title" | "artist" | 
       }
     }
 
-    rankedCandidates = rankArtworkCandidates(album, [...releaseById.values()]);
+    rankedCandidates = rankArtworkCandidates(album, [...releaseById.values()], force);
 
     console.log("[ARTWORK:FALLBACK:RESULT]", {
       album: `${album.artist} - ${album.title}`,
@@ -610,7 +610,7 @@ export async function fetchAlbumArtwork(album: Pick<Album, "title" | "artist" | 
           title: canonicalTitle,
         };
 
-        rankedCandidates = rankArtworkCandidates(matchingAlbum, typoReleases);
+        rankedCandidates = rankArtworkCandidates(matchingAlbum, typoReleases, force);
 
         console.log("[ARTWORK:TYPO:RESULT]", {
           originalTitle: album.title,
@@ -634,6 +634,8 @@ export async function fetchAlbumArtwork(album: Pick<Album, "title" | "artist" | 
   }
 
   const hasExistingFront = Boolean(album.url?.trim());
+
+  const replacingCompletePair = force && Boolean(album.url?.trim()) &&  Boolean(album.backCoverUrl?.trim());
 
   let bestResult: {
     priority: number;
@@ -672,6 +674,8 @@ export async function fetchAlbumArtwork(album: Pick<Album, "title" | "artist" | 
     }
 
     const actualCandidate = classifyFetchedArtwork(hasExistingFront, candidate, artwork);
+
+    if (replacingCompletePair && actualCandidate?.kind !== "pair") continue;
 
     console.log("[ARTWORK:CANDIDATE:CHECKED]", {
       releaseId: candidate.release.id,

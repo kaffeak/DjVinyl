@@ -9,14 +9,25 @@ type ArtworkUrls = Pick<AlbumMetadata, "coverUrl" | "backCoverUrl">;
 
 type ArtworkChanges = Pick<AlbumUpdates, "url" | "backCoverUrl">;
 
-export function buildArtworkChanges(album: ArtworkAlbum, candidate: ArtworkCandidate | null, artwork: ArtworkUrls): ArtworkChanges {
+export function buildArtworkChanges(album: ArtworkAlbum, candidate: ArtworkCandidate | null, artwork: ArtworkUrls, force = false): ArtworkChanges {
   const hasFront = Boolean(album.url?.trim());
   const hasBack = Boolean(album.backCoverUrl?.trim());
 
   const newFront = artwork.coverUrl?.trim() ?? "";
   const newBack = artwork.backCoverUrl?.trim() ?? "";
 
-  if (hasFront && hasBack) return {};
+  if (hasFront && hasBack) {
+    if (!force) return {};
+
+    if (candidate?.kind !== "pair" || !newFront || !newBack) return {};
+
+    if (newFront === album.url?.trim() && newBack === album.backCoverUrl?.trim()) return {};
+
+    return {
+      url: newFront,
+      backCoverUrl: newBack,
+    };
+  }
 
   const changes: ArtworkChanges = {};
 

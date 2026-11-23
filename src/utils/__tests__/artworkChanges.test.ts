@@ -118,4 +118,39 @@ describe("ArtworkChanges", () => {
 
     expect(changes).toEqual({ backCoverUrl: ""});
   });
+  test("should replace complete artwork only when explicitly forced", () => {
+    const completeAlbum = {
+      url: "https://example.com/old-front.jpg",
+      backCoverUrl: "https://example.com/old-back.jpg",
+    };
+
+    expect(
+      buildArtworkChanges(
+        completeAlbum,
+        createCandidate("pair"),
+        completeArtwork
+      )
+    ).toEqual({});
+
+    expect(
+      buildArtworkChanges(
+        completeAlbum,
+        createCandidate("pair"),
+        completeArtwork,
+        true
+      )
+    ).toEqual({
+      url: "https://example.com/new-front.jpg",
+      backCoverUrl: "https://example.com/new-back.jpg",
+    });
+
+    expect(
+      buildArtworkChanges(
+        completeAlbum,
+        createCandidate("back-only"),
+        completeArtwork,
+        true
+      )
+    ).toEqual({});
+  });
 });

@@ -22,11 +22,11 @@ export type ArtworkCandidate =
     release: MusicBrainzRelease;
 };
 
-export function rankArtworkCandidates(album: ArtworkAlbum, releases: MusicBrainzRelease[]): ArtworkCandidate[] {
+export function rankArtworkCandidates(album: ArtworkAlbum, releases: MusicBrainzRelease[], force = false): ArtworkCandidate[] {
   const hasFront = Boolean(album.url?.trim());
   const hasBack = Boolean(album.backCoverUrl?.trim());
 
-  if (hasFront && hasBack) return [];
+  if (hasFront && hasBack && !force) return [];
 
   const vinylReleases = releases.filter((release) => isMatchingVinylRelease(release, album.title, album.artist));
 
@@ -53,6 +53,13 @@ export function rankArtworkCandidates(album: ArtworkAlbum, releases: MusicBrainz
   const isBackOnly = (release: MusicBrainzRelease) => release["cover-art-archive"]?.front !== true && release["cover-art-archive"]?.back === true;
 
   const isFrontOnly = (release: MusicBrainzRelease) => release["cover-art-archive"]?.front === true && release["cover-art-archive"]?.back !== true;
+
+  if (hasFront && hasBack) {
+    addCandidates("pair", vinylReleases, hasPair);
+    addCandidates("pair", cdReleases, hasPair);
+
+    return candidates;
+  }
 
   addCandidates("pair", vinylReleases, hasPair);
 

@@ -10,7 +10,7 @@ import {
   TouchableWithoutFeedback,
   Dimensions,
   StyleSheet, Pressable,
-  TextInput, KeyboardAvoidingView, Platform, ScrollView,
+  TextInput, KeyboardAvoidingView, Platform, ScrollView, Alert, ActivityIndicator,
 } from "react-native";
 import {LinearGradient} from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
@@ -19,6 +19,13 @@ import {parseTrack} from "@/src/utils/tracks";
 import {getDisplayedCoverUrl} from "@/src/utils/albumArtwork";
 import {Image as ExpoImage} from "expo-image";
 import AlbumCoverFlip from "@/src/components/AlbumCoverFlip";
+import Reanimated, {
+  useEvent,
+  useSharedValue,
+} from "react-native-reanimated";
+import type { PagerViewProps } from "react-native-pager-view";
+import type {ArtworkRefreshResult} from "@/src/hooks/useAlbumLibrary";
+import { Ionicons } from "@expo/vector-icons";
 
 type AndroidColors = {
   average?: string;
@@ -40,9 +47,12 @@ interface Props {
   onUpdateGenres?: (genres: string[]) => void;
   onRemoveAlbum?: (album: Album) => void;
   queueAlbum: (album: Album) => void;
+  onRefreshArtwork: (albumId: string, force?: boolean) => Promise<ArtworkRefreshResult>;
 }
 
 const { width: screenWidth} = Dimensions.get("window");
+
+const AnimatedPagerView = Reanimated.createAnimatedComponent(PagerView);
 
 export default function AlbumInfoModal({
   visible,
@@ -53,6 +63,7 @@ export default function AlbumInfoModal({
   onUpdateGenres,
   onRemoveAlbum,
   queueAlbum,
+  onRefreshArtwork,
 }: Props) {
   const [colors, setColors] = useState<AndroidColors | null>(null)
   const [top, setTop] = useState<string>("#1e293b")
@@ -61,6 +72,9 @@ export default function AlbumInfoModal({
   const anim = useRef(new Animated.Value(0)).current;
   const [currentPage, setCurrentPage] = useState(0);
   const [loadedBackUrl, setLoadedBackUrl] = useState<string | null>(null);
+  const [refreshingAlbumId, setRefreshingAlbumId] = useState<string | null>(null);
+
+  const isRefreshingArtwork = refreshingAlbumId !== null;
 
   const pagerRef = useRef<PagerView>(null);
 
@@ -68,6 +82,8 @@ export default function AlbumInfoModal({
 
   const [editGenres, setEditGenres] = useState<boolean>(false);
   const [newGenre, setNewGenre] = useState<string>("");
+
+  const flipProgress = useSharedValue(0);
 
   const frontCoverUrl = album?.url?.trim() ?? "";
 
@@ -77,14 +93,28 @@ export default function AlbumInfoModal({
 
   const isBackReady = Boolean(backCoverUrl) && loadedBackUrl === backCoverUrl;
 
+  const onPagerScroll = useEvent<{position: number; offset: number;}>(
+    (event) => {
+      "worklet";
+
+      if (!event.eventName.endsWith("onPageScroll")) {
+        return;
+      }
+
+      const progress = event.position + event.offset;
+
+      flipProgress.value = Math.max(0, Math.min(1, progress));
+    }, ["onPageScroll"]
+  );
+
   useEffect(() => {
-    if (!visible) {
-      setEditGenres(false);
-      setNewGenre("");
-      setShowQueueOptions(false);
-      setCurrentPage(0);
-    }
-  }, [visible]);
+    flipProgress.value = 0;
+
+    if (!visible) return;
+
+    setCurrentPage(0);
+    pagerRef.current?.setPageWithoutAnimation(0);
+  }, [visible, album?.$id, flipProgress]);
 
   useEffect(() => {
     if(!visible) {
@@ -191,6 +221,49 @@ export default function AlbumInfoModal({
 
   if (!album) return null;
 
+  const handleRefindArtwork = async () => {
+    if (!album?.$id || isRefreshingArtwork) return;
+
+    const albumId = album.$id;
+
+    Haptics.selectionAsync();
+    setRefreshingAlbumId(albumId);
+
+    try {
+      const result = await onRefreshArtwork(albumId, true);
+
+      switch (result) {
+        case "updated":
+          Alert.alert("Artwork updated", "New artwork was found and saved.");
+          break;
+
+        case "unchanged":
+          Alert.alert("No new artwork", "No additional suitable artwork was found for this album.");
+          break;
+
+        case "failed":
+          Alert.alert("Artwork search failed", "The artwork lookup could not be completed. Please try again.");
+          break;
+
+        case "busy":
+          Alert.alert("Already searching", "A metadata or artwork request is already running for this album.");
+          break;
+
+        case "skipped":
+          Alert.alert("Search skipped", "The active library may have changed.");
+          break;
+      }
+    } catch (error) {
+      console.error("[ARTWORK:UI:FAILED]", error);
+      Alert.alert(
+        "Something went wrong",
+        "Could not refresh the album artwork."
+      );
+    } finally {
+      setRefreshingAlbumId((current) => current === albumId ? null : current);
+    }
+  };
+
   return (
     <Modal visible={visible} transparent animationType="none" onRequestClose={onClose}>
       <KeyboardAvoidingView
@@ -215,23 +288,27 @@ export default function AlbumInfoModal({
           >
             <View
             style={{
-              width: cardSize,
-              height: cardSize,
+              width: "100%",
+              aspectRatio: 1,
               flexShrink: 0,
               overflow: "hidden",
               backgroundColor: top,
+              position: "relative",
             }}
             >
               <AlbumCoverFlip
                 key={album.$id}
                 flipped={currentPage === 1}
+                style={{ width: "100%", height: "100%"}}
+                cornerRadius={0}
+                progress={flipProgress}
                 front={
                   frontCoverUrl ? (
                     <ExpoImage
                       source={{uri: frontCoverUrl}}
                       cachePolicy="memory-disk"
                       contentFit="cover"
-                      style={StyleSheet.absoluteFillObject}
+                      style={[StyleSheet.absoluteFillObject, {borderBottomLeftRadius: 16, borderBottomRightRadius: 16, borderTopLeftRadius: 12, borderTopRightRadius: 12}]}
                     />
                   ) : (
                     <View
@@ -253,7 +330,7 @@ export default function AlbumInfoModal({
                       source={{uri: frontCoverUrl}}
                       cachePolicy="memory-disk"
                       contentFit="cover"
-                      style={StyleSheet.absoluteFillObject}
+                      style={[StyleSheet.absoluteFillObject, {borderBottomLeftRadius: 16, borderBottomRightRadius: 16, borderTopLeftRadius: 12, borderTopRightRadius: 12}]}
                     />
                   ) : (
                     <View
@@ -270,7 +347,7 @@ export default function AlbumInfoModal({
                       contentFit="cover"
                       style={[
                         StyleSheet.absoluteFillObject,
-                        { opacity: isBackReady ? 1 : 0, },
+                        { opacity: isBackReady ? 1 : 0, borderBottomLeftRadius: 16, borderBottomRightRadius: 16, borderTopLeftRadius: 12, borderTopRightRadius: 12},
                       ]}
                       onLoad={() => {
                       setLoadedBackUrl(backCoverUrl);
@@ -280,6 +357,39 @@ export default function AlbumInfoModal({
                   </>
                 }
               />
+              {editGenres && (
+                <View
+                  pointerEvents="box-none"
+                  style={styles.artworkActionLayer}
+                >
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="Refind album artwork"
+                    disabled={isRefreshingArtwork}
+                    onPress={() => {void handleRefindArtwork()}}
+                    style={[
+                      styles.refindArtworkButton,
+                      isRefreshingArtwork && { opacity: 0.7 },
+                    ]}
+                  >
+                    {isRefreshingArtwork ? (
+                      <ActivityIndicator
+                        size="small"
+                        color="fff"
+                      />
+                    ) : (
+                      <Ionicons
+                        name="refresh"
+                        size={18}
+                        color="#fff"
+                      />
+                    )}
+                    <Text style={styles.refindArtworkText}>
+                      {isRefreshingArtwork ? "Searching..." : "Refind Artwork"}
+                    </Text>
+                  </Pressable>
+                </View>
+              )}
             </View>
             {editGenres && (
               <Pressable
@@ -407,10 +517,11 @@ export default function AlbumInfoModal({
 
                 )}
               </View>
-              <PagerView
+              <AnimatedPagerView
                 ref={pagerRef}
                 style={{flex: 1}}
                 initialPage={0}
+                onPageScroll={onPagerScroll as unknown as PagerViewProps["onPageScroll"]}
                 onPageSelected={(e) => {
                   setCurrentPage(e.nativeEvent.position);
                 }}
@@ -540,7 +651,7 @@ export default function AlbumInfoModal({
                   </View>
                   </ScrollView>
                 </View>
-              </PagerView>
+              </AnimatedPagerView>
               <View style={{ alignItems: "center", marginTop: 8 }}>
                 <View className="flex-row items-center justify-center gap-2">
                   {[0, 1].map((i) => {
@@ -666,4 +777,29 @@ const styles = StyleSheet.create({
   metaLabel: { fontSize: 15, fontWeight: "600", marginRight: 8 },
   metaValue: { color: "#333" },
   description: { color: "#333", marginTop: 8 },
+  artworkActionLayer: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: "center",
+    justifyContent: "flex-end",
+    paddingBottom: 16,
+    zIndex: 20,
+  },
+  refindArtworkButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    backgroundColor: "rgba(15, 23, 42, 0.85)",
+    paddingHorizontal: 18,
+    paddingVertical: 11,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.3)",
+    elevation: 5,
+  },
+  refindArtworkText: {
+    color: "#fff",
+    fontSize: 14,
+    fontWeight: "600",
+  },
 });

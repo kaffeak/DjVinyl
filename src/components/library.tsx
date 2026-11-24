@@ -14,7 +14,7 @@ import AlbumInfoModal from "@/src/components/albumInfoModal";
 import AlbumGridItem from "@/src/components/albumGridItem";
 import {Ionicons} from "@expo/vector-icons";
 import type {Album} from "@/src/types/album";
-import type {ArtworkRefreshResult} from "@/src/hooks/useAlbumLibrary";
+import type {ArtworkPreview, ArtworkPreviewSearchResult, ArtworkRefreshResult} from "@/src/hooks/useAlbumLibrary";
 
 type libraryProps = {
   albums: Album[],
@@ -26,6 +26,8 @@ type libraryProps = {
   onRemoveAlbumL: (album: Album) => void;
   queueAlbum: (album: Album) => void;
   onRefreshArtwork: (albumId: string, force?: boolean) => Promise<ArtworkRefreshResult>;
+  onPreviewArtwork: (albumId: string) => Promise<ArtworkPreviewSearchResult>;
+  onApplyArtworkPreview: (preview: ArtworkPreview) => Promise<ArtworkRefreshResult>;
 }
 
 export default function ShowLibrary({
@@ -38,6 +40,8 @@ export default function ShowLibrary({
   onRemoveAlbumL,
   queueAlbum,
   onRefreshArtwork,
+  onPreviewArtwork,
+  onApplyArtworkPreview,
   }: libraryProps) {
   const [selected, setSelected] = useState<Album | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
@@ -165,6 +169,8 @@ export default function ShowLibrary({
             }}
             queueAlbum={queueAlbum}
             onRefreshArtwork={onRefreshArtwork}
+            onPreviewArtwork={onPreviewArtwork}
+            onApplyArtworkPreview={onApplyArtworkPreview}
           />
           <View className="absolute bottom-0 mb-16 left-0 right-0 items-center p-4 ">
             <Pressable

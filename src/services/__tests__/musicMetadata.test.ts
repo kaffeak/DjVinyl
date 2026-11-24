@@ -1698,4 +1698,142 @@ describe("fetchAlbumMetadata", () => {
       )
     ).toBe(false);
   });
+  test.each([
+    {
+      scenario: "finds the next pair when the first is identical",
+      includeAlternative: true,
+    },
+    {
+      scenario: "returns unchanged when no alternative exists",
+      includeAlternative: false,
+    },
+  ])("$scenario", async ({ includeAlternative }) => {
+    const album = {
+      title: "Killers",
+      artist: "Iron Maiden",
+      url: "https://example.com/front.jpg",
+      backCoverUrl: "https://example.com/back.jpg",
+    };
+
+    const createRelease = (id: string, score: number) => ({
+      id,
+      title: "Killers",
+      score,
+      "artist-credit": [{ name: "Iron Maiden" }],
+      media: [{ format: '12" Vinyl' }],
+      "cover-art-archive": {
+        artwork: true,
+        front: true,
+        back: true,
+      },
+    });
+
+    const firstRelease = createRelease("first-pair", 100);
+    const secondRelease = createRelease("second-pair", 90);
+
+    fetchMock.mockImplementation(async (input) => {
+      const url = String(input);
+
+      if (url.includes("/ws/2/release-group/?")) {
+        return mockResponse({
+          "release-groups": [{
+            id: "group-123",
+            title: "Killers",
+            "artist-credit": [{ name: "Iron Maiden" }],
+            score: 100,
+          }],
+        });
+      }
+
+      if (url.includes("release-group=group-123")) {
+        return mockResponse({
+          releases: includeAlternative
+            ? [firstRelease, secondRelease]
+            : [firstRelease],
+        });
+      }
+
+      if (url.includes("coverartarchive.org/release/")) {
+        const isFirst = url.includes("/first-pair/");
+
+        return mockResponse({
+          images: [
+            {
+              front: true,
+              back: false,
+              thumbnails: {
+                "500": isFirst
+                  ? album.url
+                  : "https://example.com/front2.jpg",
+              },
+            },
+            {
+              front: false,
+              back: true,
+              thumbnails: {
+                "500": isFirst
+                  ? album.backCoverUrl
+                  : "https://example.com/back2.jpg",
+              },
+            },
+          ],
+        });
+      }
+
+      throw new Error(`Unexpected request: ${url}`);
+    });
+
+    // Force = true represents a manual artwork lookup.
+    const resultPromise = fetchAlbumArtwork(album, true);
+
+    await jest.runAllTimersAsync();
+    const result = await resultPromise;
+
+    const artworkRequests = fetchMock.mock.calls
+      .map(([input]) => String(input))
+      .filter((url) =>
+        url.includes("coverartarchive.org/release/")
+      );
+
+    // The first (identical) release is always checked.
+    expect(
+      artworkRequests.some((url) =>
+        url.includes("/first-pair/")
+      )
+    ).toBe(true);
+
+    if (includeAlternative) {
+      // Identical artwork must not stop the search.
+      expect(result.candidate?.release.id)
+        .toBe("second-pair");
+
+      expect(result.artwork).toEqual({
+        coverUrl: "https://example.com/front2.jpg",
+        backCoverUrl: "https://example.com/back2.jpg",
+      });
+
+      expect(
+        artworkRequests.some((url) =>
+          url.includes("/second-pair/")
+        )
+      ).toBe(true);
+    } else {
+      // No alternative: preserve existing artwork.
+      expect(result).toEqual({
+        candidate: null,
+        artwork: {
+          coverUrl: null,
+          backCoverUrl: null,
+        },
+      });
+    }
+
+    // Fetching alone must not modify the album.
+    expect(album.url).toBe(
+      "https://example.com/front.jpg"
+    );
+    expect(album.backCoverUrl).toBe(
+      "https://example.com/back.jpg"
+    );
+  });
 });

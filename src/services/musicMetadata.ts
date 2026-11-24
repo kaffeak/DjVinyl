@@ -7,6 +7,7 @@ import {
 } from "@/src/utils/releaseMatching";
 import {ArtworkCandidate, rankArtworkCandidates, selectArtworkCandidate} from "@/src/utils/artworkSelection";
 import {Album} from "@/src/types/album";
+import {assertRegexLiteral} from "@babel/types";
 
 export interface AlbumMetadata {
   coverUrl: string | null;
@@ -686,6 +687,20 @@ export async function fetchAlbumArtwork(album: Pick<Album, "title" | "artist" | 
     });
 
     if (!actualCandidate) continue;
+
+    const isIdenticalPair = replacingCompletePair && actualCandidate.kind === "pair" && artwork.coverUrl?.trim() === album.url?.trim() && artwork.backCoverUrl?.trim() === album.backCoverUrl?.trim();
+
+    if (isIdenticalPair) {
+      console.log("[ARTWORK:CANDIDATE:IDENTICAL]", {
+        releaseId: candidate.release.id,
+        frontUrl: artwork.coverUrl,
+        backUrl: artwork.backCoverUrl,
+      });
+
+      continue;
+    }
+
+
 
     const priority = getArtworkPriority(hasExistingFront, actualCandidate);
 

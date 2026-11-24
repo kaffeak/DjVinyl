@@ -225,6 +225,132 @@ export function useAlbumLibrary(owner: string){
     }, [owner, loadedLibraryId] //[owner, loadedLibraryId, albums]
   );
 
+  const previewAlbumArtwork = useCallback(async (albumId: string): Promise<ArtworkPreviewSearchResult> => {
+    if (!owner || loadedLibraryId !== owner || activeLibraryRef.current !== owner) return {status: "skipped"};
+
+    const album = albumsRef.current.find((item) => item.$id === albumId);
+
+    if (!album) return {status: "skipped"};
+
+    const libraryId = owner;
+    const key = `${libraryId}:${albumId}`;
+
+    if (metadataInFlight.current.has(key)) return {status: "busy"};
+
+    metadataInFlight.current.add(key);
+
+    try {
+      const {candidate, artwork} = await fetchAlbumArtwork(album, true);
+
+      if (activeLibraryRef.current !== libraryId) return {status: "skipped"};
+
+      if (!candidate) return {status: "unchanged"};
+
+      const changes = buildArtworkChanges(album, candidate, artwork, true);
+
+      if (Object.keys(changes).length === 0) return {status: "unchanged"};
+
+      const currentFront = album.url?.trim() ?? "";
+      const currentBack = album.backCoverUrl?.trim() ?? "";
+
+      const proposedFront = changes.url ?? currentFront;
+      const proposedBack = changes.backCoverUrl ?? currentBack;
+
+      const preview: ArtworkPreview = {
+        libraryId,
+        albumId,
+        releaseId: candidate.release.id,
+        releaseTitle: candidate.release.title ?? "",
+        releaseFormat: candidate.release.media?.map((medium) => medium.format).filter(Boolean).join(", ") ?? "",
+        current: {
+          frontUrl: currentFront,
+          backUrl: currentBack,
+        },
+        proposed: {
+          frontUrl: proposedFront,
+          backUrl: proposedBack,
+        },
+        changes,
+      };
+
+      console.log("[ARTWORK:PREVIEW:READY]", {
+        albumId,
+        releaseId: preview.releaseId,
+        changes,
+      });
+
+      return {
+        status: "ready",
+        preview,
+      };
+    } catch (error) {
+      console.error(
+        "[ARTWORK:PREVIEW:FAILED]",
+        albumId,
+        error
+      );
+
+      return { status: "failed" };
+    } finally {
+      metadataInFlight.current.delete(key);
+    }
+  }, [owner, loadedLibraryId]);
+
+  const applyArtworkPreview = useCallback(async (preview: ArtworkPreview): Promise<ArtworkRefreshResult> => {
+    const libraryId = preview.libraryId;
+    const albumId = preview.albumId;
+
+    if (!owner || owner !== libraryId || loadedLibraryId !== libraryId || activeLibraryRef.current !== libraryId) return "skipped";
+
+    const album = albumsRef.current.find((item) => item.$id === albumId);
+
+    if (!album) return "skipped";
+
+    if ((album.url?.trim() ?? "") !== preview.current.frontUrl || (album.backCoverUrl?.trim() ?? "") !== preview.current.backUrl) {
+      console.warn(
+        "[ARTWORK:PREVIEW:STALE]",
+        albumId
+      );
+
+      return "skipped";
+    }
+
+    if (Object.keys(preview.changes).length === 0) return "unchanged";
+
+    const key =  `${libraryId}:${albumId}`;
+
+    if (metadataInFlight.current.has(key)) return "busy";
+
+    metadataInFlight.current.add(key);
+
+    try {
+      if (activeLibraryRef.current !== libraryId) return "skipped";
+
+      await updateAlbum(libraryId, albumId, preview.changes);
+
+      if (activeLibraryRef.current === libraryId) {
+        setAlbums((previous) => previous.map((item) => item.$id === albumId ? {...item, ...preview.changes} : item));
+      }
+
+      console.log("[ARTWORK:PREVIEW:APPLIED]", {
+        albumId,
+        releaseId: preview.releaseId,
+      });
+
+      return "updated";
+    } catch (error) {
+      console.error(
+        "[ARTWORK:PREVIEW:APPLY_FAILED]",
+        albumId,
+        error
+      );
+
+      return "failed";
+    } finally {
+      metadataInFlight.current.delete(key);
+    }
+  }, [owner, loadedLibraryId]);
+
   const runArtworkMigration = useCallback(async () => {
     if (!owner || loadedLibraryId !== owner || activeLibraryRef.current !== owner || bulkArtworkInFlight.current) {
       console.log("[ARTWORK:MIGRATION] Not ready or already running");
@@ -486,6 +612,8 @@ export function useAlbumLibrary(owner: string){
     removeAlbum,
     updateGenres,
     refreshAlbumArtwork,
+    previewAlbumArtwork,
+    applyArtworkPreview,
 
     refreshMissingArtwork,
     isBuilkArtworkRefreshing,

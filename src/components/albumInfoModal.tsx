@@ -1,4 +1,4 @@
-import React, {useEffect, useRef, useState} from "react";
+import React, {use, useEffect, useRef, useState} from "react";
 import {getColors} from 'react-native-image-colors';
 import PagerView from 'react-native-pager-view';
 import invert from 'invert-color';
@@ -24,8 +24,9 @@ import Reanimated, {
   useSharedValue,
 } from "react-native-reanimated";
 import type { PagerViewProps } from "react-native-pager-view";
-import type {ArtworkRefreshResult} from "@/src/hooks/useAlbumLibrary";
+import type {ArtworkPreview, ArtworkPreviewSearchResult, ArtworkRefreshResult} from "@/src/hooks/useAlbumLibrary";
 import { Ionicons } from "@expo/vector-icons";
+import ArtworkPreviewModal from "@/src/components/ArtworkPreviewModal";
 
 type AndroidColors = {
   average?: string;
@@ -48,6 +49,8 @@ interface Props {
   onRemoveAlbum?: (album: Album) => void;
   queueAlbum: (album: Album) => void;
   onRefreshArtwork: (albumId: string, force?: boolean) => Promise<ArtworkRefreshResult>;
+  onPreviewArtwork: (albumId: string) => Promise<ArtworkPreviewSearchResult>;
+  onApplyArtworkPreview: (preview: ArtworkPreview) => Promise<ArtworkRefreshResult>;
 }
 
 const { width: screenWidth} = Dimensions.get("window");
@@ -64,6 +67,8 @@ export default function AlbumInfoModal({
   onRemoveAlbum,
   queueAlbum,
   onRefreshArtwork,
+  onPreviewArtwork,
+  onApplyArtworkPreview,
 }: Props) {
   const [colors, setColors] = useState<AndroidColors | null>(null)
   const [top, setTop] = useState<string>("#1e293b")
@@ -73,6 +78,23 @@ export default function AlbumInfoModal({
   const [currentPage, setCurrentPage] = useState(0);
   const [loadedBackUrl, setLoadedBackUrl] = useState<string | null>(null);
   const [refreshingAlbumId, setRefreshingAlbumId] = useState<string | null>(null);
+  const [artworkPreview, setArtworkPreview] = useState<ArtworkPreview | null>(null);
+  const [searchingArtwork, setSearchingArtwork] = useState(false);
+  const [applyingArtwork, setApplyingArtwork] = useState(false);
+
+  const previewRequestId = useRef(0);
+
+  const albumIdRef = useRef(album?.$id);
+  albumIdRef.current = album?.$id;
+
+  const visibleRef = useRef(visible);
+  visibleRef.current = visible;
+
+  useEffect(() => {
+    previewRequestId.current += 1;
+    setArtworkPreview(null);
+    setSearchingArtwork(false);
+  }, [visible, album?.$id]);
 
   const isRefreshingArtwork = refreshingAlbumId !== null;
 
@@ -222,56 +244,144 @@ export default function AlbumInfoModal({
   if (!album) return null;
 
   const handleRefindArtwork = async () => {
-    if (!album?.$id || isRefreshingArtwork) return;
+    if (!album?.$id || searchingArtwork || applyingArtwork) return;
 
     const albumId = album.$id;
+    const requestId = ++previewRequestId.current;
 
-    Haptics.selectionAsync();
-    setRefreshingAlbumId(albumId);
+    void Haptics.selectionAsync();
+    setSearchingArtwork(true);
 
     try {
-      const result = await onRefreshArtwork(albumId, true);
+      const result = await onPreviewArtwork(albumId);
 
-      switch (result) {
-        case "updated":
-          Alert.alert("Artwork updated", "New artwork was found and saved.");
-          break;
+      if (requestId !== previewRequestId.current || !visibleRef.current || albumIdRef.current !== albumId) return;
 
+      if (result.status === "ready") {
+        setArtworkPreview(result.preview);
+        return;
+      }
+
+      switch (result.status) {
         case "unchanged":
-          Alert.alert("No new artwork", "No additional suitable artwork was found for this album.");
+          Alert.alert("No replacement found", "No different suitable artwork was found.");
           break;
 
         case "failed":
-          Alert.alert("Artwork search failed", "The artwork lookup could not be completed. Please try again.");
+          Alert.alert( "Artwork search failed",  "Please try again.");
           break;
 
         case "busy":
-          Alert.alert("Already searching", "A metadata or artwork request is already running for this album.");
+          Alert.alert("Already searching",  "An artwork or metadata request is running.");
           break;
 
         case "skipped":
-          Alert.alert("Search skipped", "The active library may have changed.");
+          Alert.alert("Search skipped", "The album or active library changed.");
           break;
       }
     } catch (error) {
-      console.error("[ARTWORK:UI:FAILED]", error);
-      Alert.alert(
-        "Something went wrong",
-        "Could not refresh the album artwork."
-      );
+      console.error("[ARTWORK:UI:PREVIEW_FAILED]", error);
+
+      if (requestId === previewRequestId.current && visibleRef.current && albumIdRef.current === albumId) {
+        Alert.alert(
+          "Artwork search failed",
+          "Could not search for replacement artwork."
+        );
+      }
     } finally {
-      setRefreshingAlbumId((current) => current === albumId ? null : current);
+      if (requestId === previewRequestId.current) setSearchingArtwork(false);
     }
   };
 
+  const handleApplyArtworkPreview = async () => {
+    if (!artworkPreview || applyingArtwork) return;
+
+    const selectedPreview = artworkPreview;
+
+    void Haptics.selectionAsync();
+    setApplyingArtwork(true);
+
+    try {
+      const result = await onApplyArtworkPreview(selectedPreview);
+
+      if (!visibleRef.current || albumIdRef.current !== selectedPreview.albumId) return;
+
+      switch (result) {
+        case "updated":
+          setArtworkPreview(null);
+          void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          Alert.alert(
+            "Artwork updated",
+            "The selected artwork has been saved."
+          );
+          break;
+
+        case "unchanged":
+          setArtworkPreview(null);
+          Alert.alert(
+            "No changes",
+            "The proposed artwork matches the current artwork."
+          );
+          break;
+
+        case "skipped":
+          setArtworkPreview(null);
+          Alert.alert(
+            "Preview expired",
+            "The album or library changed. Please search again."
+          );
+          break;
+
+        case "busy":
+          Alert.alert(
+            "Already updating",
+            "Another operation is running for this album."
+          );
+          break;
+
+        case "failed":
+          Alert.alert(
+            "Could not save artwork",
+            "Please try again."
+          );
+          break;
+      }
+    } catch (error) {
+      console.error("[ARTWORK:UI:APPLY_FAILED]", error);
+
+      Alert.alert(
+        "Could not save artwork",
+        "An unexpected error occurred."
+      );
+    } finally {
+      setApplyingArtwork(false);
+    }
+  };
+
+  const handleModalClose = () => {
+    if (applyingArtwork) return;
+
+    if (artworkPreview) {
+      setArtworkPreview(null);
+      return;
+    }
+
+    onClose();
+  };
+
   return (
-    <Modal visible={visible} transparent animationType="none" onRequestClose={onClose}>
+    <Modal
+      visible={visible}
+      transparent
+      animationType="none"
+      onRequestClose={handleModalClose}
+    >
       <KeyboardAvoidingView
         style={styles.modalRoot}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         keyboardVerticalOffset={0}
       >
-        <TouchableWithoutFeedback onPress={onClose}>
+        <TouchableWithoutFeedback onPress={handleModalClose}>
           <View style={[styles.overlay, { opacity: 0.6 }]} />
         </TouchableWithoutFeedback>
 
@@ -365,14 +475,14 @@ export default function AlbumInfoModal({
                   <Pressable
                     accessibilityRole="button"
                     accessibilityLabel="Refind album artwork"
-                    disabled={isRefreshingArtwork}
+                    disabled={searchingArtwork || applyingArtwork}
                     onPress={() => {void handleRefindArtwork()}}
                     style={[
                       styles.refindArtworkButton,
                       isRefreshingArtwork && { opacity: 0.7 },
                     ]}
                   >
-                    {isRefreshingArtwork ? (
+                    {searchingArtwork ? (
                       <ActivityIndicator
                         size="small"
                         color="fff"
@@ -385,7 +495,7 @@ export default function AlbumInfoModal({
                       />
                     )}
                     <Text style={styles.refindArtworkText}>
-                      {isRefreshingArtwork ? "Searching..." : "Refind Artwork"}
+                      {searchingArtwork ? "Searching..." : "Refind Artwork"}
                     </Text>
                   </Pressable>
                 </View>
@@ -675,6 +785,16 @@ export default function AlbumInfoModal({
             </LinearGradient>
           </Animated.View>
         </View>
+        <ArtworkPreviewModal
+          preview={artworkPreview}
+          saving={applyingArtwork}
+          onCancel={() => {
+            if (!applyingArtwork) setArtworkPreview(null);
+          }}
+          onConfirm={() => {
+            void handleApplyArtworkPreview();
+          }}
+        />
       </KeyboardAvoidingView>
     </Modal>
   );

@@ -33,6 +33,8 @@ export default function Index() {
     updateGenres,
     refreshAlbumArtwork,
     runArtworkMigration,
+    previewAlbumArtwork,
+    applyArtworkPreview,
   } = useAlbumLibrary(owner);
 
   const {
@@ -225,6 +227,8 @@ export default function Index() {
             onClose={() => {setLibrary(false)}}
             queueAlbum={queueAlbum}
             onRefreshArtwork={refreshAlbumArtwork}
+            onPreviewArtwork={previewAlbumArtwork}
+            onApplyArtworkPreview={applyArtworkPreview}
           />
         </View>
       </LinearGradient>

@@ -401,9 +401,12 @@ export default function AlbumInfoModal({
               width: "100%",
               aspectRatio: 1,
               flexShrink: 0,
-              overflow: "hidden",
+              overflow: "visible",
+              zIndex: 2,
               backgroundColor: top,
               position: "relative",
+              borderTopRightRadius: 12,
+              borderTopLeftRadius: 12,
             }}
             >
               <AlbumCoverFlip
@@ -503,7 +506,7 @@ export default function AlbumInfoModal({
             </View>
             {editGenres && (
               <Pressable
-                style={styles.minusBadgeAlbum}
+                style={[styles.minusBadgeAlbum, {zIndex: 2,}]}
                 onPress={() => {
                   Haptics.selectionAsync();
                   handleRemoveAlbum(album);
@@ -874,7 +877,7 @@ const styles = StyleSheet.create({
   card: {
     backgroundColor: "#fff",
     borderRadius: 12,
-    overflow: "hidden",
+    overflow: "visible",
     elevation: 8,
     shadowColor: "#000",
     shadowOpacity: 0.15,
@@ -890,7 +893,13 @@ const styles = StyleSheet.create({
     zIndex: 10,
   },
   image: { width: "100%", height: "100%" },
-  info: { padding: 14, flex: 1},
+  info: {
+    padding: 14,
+    flex: 1,
+    borderBottomRightRadius: 12,
+    borderBottomLeftRadius: 12,
+    overflow: "hidden",
+  },
   title: { fontSize: 20, fontWeight: "700", marginBottom: 4 },
   artist: { fontSize: 16, marginBottom: 8 },
   metaRow: { flexDirection: "row", marginBottom: 6 },

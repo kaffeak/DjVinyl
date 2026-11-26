@@ -120,6 +120,7 @@ export default function Index() {
   if (isLoading || (owner !== "" && loadedLibraryId !== owner)) {
     return <LoadingScreen />;
   }
+  const collectionName =  owner === process.env.EXPO_PUBLIC_APPWRITE_LIBRARY_USER_ONE_ID ? "Alex" : "Mats and Sylvias";
   return (
     <GestureHandlerRootView>
       <LinearGradient
@@ -128,33 +129,88 @@ export default function Index() {
         end={[0, 1]}
         style={{ flex: 1 }}
       >
-        <View className="flex-1 ">
-          <View className="flex-row justify-between p-4 mt-6">
-            <Pressable
-              onPress={() => {
-                Haptics.selectionAsync();
-                setLibrary(true);
-              }}
-            >
-              <Ionicons name="library-outline" size={28} color="white"/>
-            </Pressable>
-            <View className="flex-1 items-center mt-5">
+        <View className="flex-1 mt-6">
+          <View className="mt-6 px-5">
+            <View className="flex-row items-center justify-between">
               <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Open album library"
                 onPress={() => {
-                  Haptics.selectionAsync();
-                  changeLibrary();
-                }}>
-                <Text className="mt-4 font-bold text-3xl text-gray-200 text-center">{owner === process.env.EXPO_PUBLIC_APPWRITE_LIBRARY_USER_ONE_ID ? "Alex" : "Mats and Sylvias"} collection</Text>
+                  void Haptics.selectionAsync();
+                  setLibrary(true);
+                }}
+                className="w-11 h-11 rounded-xl bg-white/10 items-center justify-center"
+              >
+                <Ionicons
+                  name="library-outline"
+                  size={24}
+                  color="#F1F5F9"
+                />
+              </Pressable>
+              <Text
+                style={{
+                  color: "#F1F5F9",
+                  fontSize: 21,
+                  fontWeight: "800",
+                  letterSpacing: 3,
+                }}
+              >
+                DJVINYL
+              </Text>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Open settings"
+                onPress={() => {
+                  void Haptics.selectionAsync();
+                  setSettingsMenu(true);
+                }}
+                className="w-11 h-11 rounded-xl bg-white/10 items-center justify-center"
+              >
+                <Ionicons
+                  name="settings-outline"
+                  size={24}
+                  color="#F1F5F9"
+                />
               </Pressable>
             </View>
-            <Pressable
-              onPress={() => {
-                Haptics.selectionAsync();
-                setSettingsMenu(true);
-              }}
-            >
-              <Ionicons name="settings-outline" size={28} color="white"/>
-            </Pressable>
+            <View className="items-center mt-5">
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`Switch collection. Current: ${collectionName}`}
+                onPress={() => {
+                  void Haptics.selectionAsync();
+                  void changeLibrary();
+                }}
+                className="flex-row items-center justify-center rounded-full border border-white/20 bg-white/5 px-5 py-3"
+                style={{maxWidth: "100%"}}
+              >
+                <Ionicons
+                  name="disc-outline"
+                  size={19}
+                  color="#C4B5FD"
+                />
+                <Text
+                  numberOfLines={1}
+                  style={{
+                    color: "#F1F5F9",
+                    fontSize: 16,
+                    fontWeight: "600",
+                    marginHorizontal: 10,
+                    flexShrink: 1,
+                  }}
+                >
+                  {collectionName} collection
+                </Text>
+                <Ionicons
+                  name="swap-horizontal"
+                  size={18}
+                  color="#C4B5FD"
+                />
+              </Pressable>
+              <Text className="text-slate-400 text-xs mt-2">
+                {albums.length} {albums.length === 1 ? "album" : "albums"}
+              </Text>
+            </View>
           </View>
           {/*Here starts the ablum content*/}
           <View className="flex-1 items-center justify-center">
@@ -163,6 +219,11 @@ export default function Index() {
               queueMode={queueMode}
               onNext={nextCard}
               onClearQueue={clearQueue}
+              albumCount={albums.length}
+              hasActiveGenreFilters={selectedGenres.length > 0}
+              onOpenLibrary={() => setLibrary(true)}
+              onOpenAddAlbum={() => setAlbumMenu(true)}
+              onOpenSettings={() => setSettingsMenu(true)}
             />
           </View>
           <View className="items-center mb-16">
